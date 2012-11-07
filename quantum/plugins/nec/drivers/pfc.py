@@ -15,6 +15,8 @@
 #    under the License.
 # @author: Ryota MIBU
 
+import uuid
+
 from quantum.plugins.nec.common import ofc_client
 from quantum.plugins.nec import ofc_driver_base
 
@@ -27,7 +29,7 @@ PORTS_PATH = "/tenants/%s/networks/%s/ports"
 PORT_PATH = "/tenants/%s/networks/%s/ports/%s"
 
 
-class PFCDriver(ofc_driver_base.OFCDriverBase):
+class PFCDriverBase(ofc_driver_base.OFCDriverBase):
 
     def __init__(self, conf_ofc):
         self.client = ofc_client.OFCClient(host=conf_ofc.host,
@@ -40,28 +42,9 @@ class PFCDriver(ofc_driver_base.OFCDriverBase):
     def filter_supported(cls):
         return False
 
-    def create_tenant(self, description, tenant_id=None):
-        body = {'description': description}
-        if tenant_id:
-            body.update({'id': tenant_id})
-        res = self.client.post(TENANTS_PATH, body=body)
-        ofc_tenant_id = res['id']
-        return ofc_tenant_id
-
-    def update_tenant(self, ofc_tenant_id, description):
-        path = TENANT_PATH % ofc_tenant_id
-        body = {'description': description}
-        res = self.client.put(path, body=body)
-
-    def delete_tenant(self, ofc_tenant_id):
-        path = TENANT_PATH % ofc_tenant_id
-        return self.client.delete(path)
-
     def create_network(self, ofc_tenant_id, description, network_id=None):
         path = NETWORKS_PATH % ofc_tenant_id
         body = {'description': description}
-        if network_id:
-            body.update({'id': network_id})
         res = self.client.post(path, body=body)
         ofc_network_id = res['id']
         return ofc_network_id
@@ -81,21 +64,32 @@ class PFCDriver(ofc_driver_base.OFCDriverBase):
         body = {'datapath_id': portinfo.datapath_id,
                 'port': str(portinfo.port_no),
                 'vid': str(portinfo.vlan_id)}
-        if port_id:
-            body.update({'id': port_id})
         res = self.client.post(path, body=body)
-        ofc_port_id = res['id']
-        return ofc_port_id
-
-    def update_port(self, ofc_tenant_id, ofc_network_id, portinfo, port_id):
-        path = PORT_PATH % (ofc_tenant_id, ofc_network_id, ofc_port_id)
-        body = {'datapath_id': portinfo.datapath_id,
-                'port': str(portinfo.port_no),
-                'vid': str(portinfo.vlan_id)}
-        res = self.client.put(path, body=body)
         ofc_port_id = res['id']
         return ofc_port_id
 
     def delete_port(self, ofc_tenant_id, ofc_network_id, ofc_port_id):
         path = PORT_PATH % (ofc_tenant_id, ofc_network_id, ofc_port_id)
+        return self.client.delete(path)
+
+
+class PFCV3Driver(PFCDriverBase):
+
+    def create_tenant(self, description, tenant_id=None):
+        return tenant_id or str(uuid.uuid4())
+
+    def delete_tenant(self, ofc_tenant_id):
+        pass
+
+
+class PFCV4Driver(PFCDriverBase):
+
+    def create_tenant(self, description, tenant_id=None):
+        body = {'description': description}
+        res = self.client.post(TENANTS_PATH, body=body)
+        ofc_tenant_id = res['id']
+        return ofc_tenant_id
+
+    def delete_tenant(self, ofc_tenant_id):
+        path = TENANT_PATH % ofc_tenant_id
         return self.client.delete(path)
