@@ -75,8 +75,11 @@ class PFCDriverBase(ofc_driver_base.OFCDriverBase):
 
 class PFCV3Driver(PFCDriverBase):
 
+    PFC_ID_STRLEN_LIMIT = 31
+
     def create_tenant(self, description, tenant_id=None):
-        return tenant_id or str(uuid.uuid4())
+        ofc_tenant_id = tenant_id or str(uuid.uuid4())
+        return ofc_tenant_id[:self.PFC_ID_STRLEN_LIMIT]
 
     def delete_tenant(self, ofc_tenant_id):
         pass
