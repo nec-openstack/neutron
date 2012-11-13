@@ -26,9 +26,11 @@ class HasId(object):
     """id mixin, add to subclasses that have an id."""
     id = sa.Column(sa.String(255), primary_key=True, default=utils.str_uuid)
 
+
 class HasQuantumId(object):
     """Logical ID on Quantum"""
     quantum_id = sa.Column(sa.String(36), nullable=False)
+
 
 class OFCTenant(model_base.BASEV2, HasId, HasQuantumId):
     """Represents a Tenant on OpenFlow Network/Controller."""

@@ -15,8 +15,8 @@
 #    under the License.
 # @author: Ryota MIBU
 
-import uuid
 import re
+import uuid
 
 from quantum.plugins.nec.common import ofc_client
 from quantum.plugins.nec import ofc_driver_base
