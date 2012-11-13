@@ -17,32 +17,36 @@
 
 import sqlalchemy as sa
 
+from quantum.common import utils
 from quantum.db import model_base
 from quantum.db import models_v2
 
+
+class HasId(object):
+    """id mixin, add to subclasses that have an id."""
+    id = sa.Column(sa.String(255), primary_key=True, default=utils.str_uuid)
 
 class HasQuantumId(object):
     """Logical ID on Quantum"""
     quantum_id = sa.Column(sa.String(36), nullable=False)
 
-
-class OFCTenant(model_base.BASEV2, models_v2.HasId, HasQuantumId):
+class OFCTenant(model_base.BASEV2, HasId, HasQuantumId):
     """Represents a Tenant on OpenFlow Network/Controller."""
 
 
-class OFCNetwork(model_base.BASEV2, models_v2.HasId, HasQuantumId):
+class OFCNetwork(model_base.BASEV2, HasId, HasQuantumId):
     """Represents a Network on OpenFlow Network/Controller."""
 
 
-class OFCPort(model_base.BASEV2, models_v2.HasId, HasQuantumId):
+class OFCPort(model_base.BASEV2, HasId, HasQuantumId):
     """Represents a Port on OpenFlow Network/Controller."""
 
 
-class OFCFilter(model_base.BASEV2, models_v2.HasId, HasQuantumId):
+class OFCFilter(model_base.BASEV2, HasId, HasQuantumId):
     """Represents a Filter on OpenFlow Network/Controller."""
 
 
-class PortInfo(model_base.BASEV2, models_v2.HasId):
+class PortInfo(model_base.BASEV2, HasId):
     """Represents a Virtual Interface."""
     datapath_id = sa.Column(sa.String(36), nullable=False)
     port_no = sa.Column(sa.Integer, nullable=False)
@@ -50,7 +54,7 @@ class PortInfo(model_base.BASEV2, models_v2.HasId):
     mac = sa.Column(sa.String(32), nullable=False)
 
 
-class PacketFilter(model_base.BASEV2, models_v2.HasId, models_v2.HasTenant):
+class PacketFilter(model_base.BASEV2, HasId, models_v2.HasTenant):
     """Represents a packet filter"""
     network_id = sa.Column(sa.String(36),
                            sa.ForeignKey('networks.id', ondelete="CASCADE"),
