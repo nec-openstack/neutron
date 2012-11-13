@@ -16,12 +16,24 @@
 # @author: Ryota MIBU
 
 import uuid
+import re
 
 from quantum.plugins.nec.common import ofc_client
 from quantum.plugins.nec import ofc_driver_base
 
 
+HEX_ELEM = '[0-9A-Fa-f]'
+UUID_PATTERN = '-'.join([HEX_ELEM + '{8}', HEX_ELEM + '{4}',
+                         HEX_ELEM + '{4}', HEX_ELEM + '{4}',
+                         HEX_ELEM + '{12}'])
+
+
 class PFCDriverBase(ofc_driver_base.OFCDriverBase):
+    """Base Class for PDC Drivers
+
+    PFCDriverBase provides methods to handle PFC resources through REST API.
+    This uses ofc resource path instead of ofc resource ID.
+    """
 
     def __init__(self, conf_ofc):
         self.client = ofc_client.OFCClient(host=conf_ofc.host,
@@ -34,9 +46,36 @@ class PFCDriverBase(ofc_driver_base.OFCDriverBase):
     def filter_supported(cls):
         return False
 
+    def _generate_pfc_str(self, raw_str):
+        """Generate PFC acceptable String"""
+        return re.sub(r'[^0-9a-zA-Z]', '_', raw_str)
+
+    def _generate_pfc_id(self, id_str):
+        """Generate ID on PFC
+
+        Currently, PFC ID must be less than 32.
+        Shorten UUID string length from 36 to 31 by follows:
+          * delete UUID Version and hyphen (see RFC4122)
+          * ensure str length
+        """
+        if re.match(UUID_PATTERN, id_str):
+            uuid_no_version = id_str[:14] + id_str[15:]
+            uuid_no_hyphen = uuid_no_version.replace('-', '')
+            return uuid_no_hyphen[:31]
+        else:
+            return self._generate_pfc_str(id_str)[:31]
+
+    def _generate_pfc_description(self, desc):
+        """Generate Description on PFC
+
+        Currently, PFC Description must be less than 128.
+        """
+        return self._generate_pfc_str(desc)[:127]
+
     def create_tenant(self, description, tenant_id=None):
         path = "/tenants"
-        body = {'description': description}
+        pfc_desc = self._generate_pfc_description(description)
+        body = {'description': pfc_desc}
         res = self.client.post(path, body=body)
         ofc_tenant_id = res['id']
         ofc_tenant_path = path + '/' + ofc_tenant_id
@@ -48,7 +87,8 @@ class PFCDriverBase(ofc_driver_base.OFCDriverBase):
 
     def create_network(self, ofc_tenant_id, description, network_id=None):
         path = "%s/networks" % ofc_tenant_id
-        body = {'description': description}
+        pfc_desc = self._generate_pfc_description(description)
+        body = {'description': pfc_desc}
         res = self.client.post(path, body=body)
         ofc_network_id = res['id']
         ofc_network_path = path + '/' + ofc_network_id
@@ -56,7 +96,8 @@ class PFCDriverBase(ofc_driver_base.OFCDriverBase):
 
     def update_network(self, ofc_tenant_id, ofc_network_id, description):
         path = ofc_network_id
-        body = {'description': description}
+        pfc_desc = self._generate_pfc_description(description)
+        body = {'description': pfc_desc}
         return self.client.put(path, body=body)
 
     def delete_network(self, ofc_tenant_id, ofc_network_id):
@@ -81,12 +122,10 @@ class PFCDriverBase(ofc_driver_base.OFCDriverBase):
 
 class PFCV3Driver(PFCDriverBase):
 
-    PFC_ID_STRLEN_LIMIT = 31
-
     def create_tenant(self, description, tenant_id=None):
         path = "/tenants"
-        ofc_tenant_id = tenant_id or str(uuid.uuid4())
-        ofc_tenant_path = path + '/' + ofc_tenant_id[:self.PFC_ID_STRLEN_LIMIT]
+        ofc_tenant_id = self._generate_pfc_id(tenant_id)
+        ofc_tenant_path = path + '/' + ofc_tenant_id
         return ofc_tenant_path
 
     def delete_tenant(self, ofc_tenant_id):
@@ -96,10 +135,11 @@ class PFCV3Driver(PFCDriverBase):
 class PFCV4Driver(PFCDriverBase):
 
     def create_tenant(self, description, tenant_id=None):
-        ofc_tenant_id = tenant_id or str(uuid.uuid4())
         path = "/tenants"
+        ofc_tenant_id = self._generate_pfc_id(tenant_id)
+        pfc_desc = self._generate_pfc_description(description)
         body = {'id': ofc_tenant_id,
-                'description': description}
+                'description': pfc_desc}
         res = self.client.post(path, body=body)
         ofc_tenant_id = res['id']
         ofc_tenant_path = path + '/' + ofc_tenant_id
