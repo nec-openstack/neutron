@@ -141,6 +141,5 @@ class PFCV4Driver(PFCDriverBase):
         body = {'id': ofc_tenant_id,
                 'description': pfc_desc}
         res = self.client.post(path, body=body)
-        ofc_tenant_id = res['id']
         ofc_tenant_path = path + '/' + ofc_tenant_id
         return ofc_tenant_path
