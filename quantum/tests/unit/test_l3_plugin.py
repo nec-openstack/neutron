@@ -118,6 +118,7 @@ class L3NatExtensionTestCase(unittest.TestCase):
 
         instance = self.plugin.return_value
         instance.create_router.return_value = return_value
+        instance.get_routers_count.return_value = 0
 
         res = self.api.post_json(_get_path('routers'), data)
 
@@ -561,6 +562,40 @@ class L3NatDBTestCase(test_db_plugin.QuantumDbPluginV2TestCase):
                                                       None,
                                                       p1['port']['id'])
 
+    def test_router_add_gateway_dup_subnet1(self):
+        with self.router() as r:
+            with self.subnet() as s:
+                body = self._router_interface_action('add',
+                                                     r['router']['id'],
+                                                     s['subnet']['id'],
+                                                     None)
+                self._set_net_external(s['subnet']['network_id'])
+                self._add_external_gateway_to_router(
+                    r['router']['id'],
+                    s['subnet']['network_id'],
+                    expected_code=exc.HTTPBadRequest.code)
+                body = self._router_interface_action('remove',
+                                                     r['router']['id'],
+                                                     s['subnet']['id'],
+                                                     None)
+
+    def test_router_add_gateway_dup_subnet2(self):
+        with self.router() as r:
+            with self.subnet() as s:
+                self._set_net_external(s['subnet']['network_id'])
+                self._add_external_gateway_to_router(
+                    r['router']['id'],
+                    s['subnet']['network_id'])
+                self._router_interface_action('add',
+                                              r['router']['id'],
+                                              s['subnet']['id'],
+                                              None,
+                                              expected_code=exc.
+                                              HTTPBadRequest.code)
+                self._remove_external_gateway_from_router(
+                    r['router']['id'],
+                    s['subnet']['network_id'])
+
     def test_router_add_interface_overlapped_cidr(self):
         with self.router() as r:
             with self.subnet(cidr='10.0.1.0/24') as s1:
@@ -597,6 +632,35 @@ class L3NatDBTestCase(test_db_plugin.QuantumDbPluginV2TestCase):
                                                  None,
                                                  expected_code=exc.
                                                  HTTPBadRequest.code)
+
+    def test_network_update_external_failure(self):
+        with self.router() as r:
+            with self.subnet() as s1:
+                self._set_net_external(s1['subnet']['network_id'])
+                self._add_external_gateway_to_router(
+                    r['router']['id'],
+                    s1['subnet']['network_id'])
+                self._update('networks', s1['subnet']['network_id'],
+                             {'network': {'router:external': False}},
+                             expected_code=exc.HTTPConflict.code)
+                self._remove_external_gateway_from_router(
+                    r['router']['id'],
+                    s1['subnet']['network_id'])
+
+    def test_network_update_external(self):
+        with self.router() as r:
+            with self.network('test_net') as testnet:
+                self._set_net_external(testnet['network']['id'])
+                with self.subnet() as s1:
+                    self._set_net_external(s1['subnet']['network_id'])
+                    self._add_external_gateway_to_router(
+                        r['router']['id'],
+                        s1['subnet']['network_id'])
+                    self._update('networks', testnet['network']['id'],
+                                 {'network': {'router:external': False}})
+                    self._remove_external_gateway_from_router(
+                        r['router']['id'],
+                        s1['subnet']['network_id'])
 
     def test_create_router_with_gwinfo(self):
         with self.subnet() as s:
@@ -763,7 +827,7 @@ class L3NatDBTestCase(test_db_plugin.QuantumDbPluginV2TestCase):
 
     @contextlib.contextmanager
     def floatingip_with_assoc(self, port_id=None, fmt='json'):
-        with self.subnet() as public_sub:
+        with self.subnet(cidr='11.0.0.0/24') as public_sub:
             self._set_net_external(public_sub['subnet']['network_id'])
             with self.port() as private_port:
                 with self.router() as r:
@@ -794,7 +858,7 @@ class L3NatDBTestCase(test_db_plugin.QuantumDbPluginV2TestCase):
 
     @contextlib.contextmanager
     def floatingip_no_assoc(self, private_sub, fmt='json'):
-        with self.subnet() as public_sub:
+        with self.subnet(cidr='12.0.0.0/24') as public_sub:
             self._set_net_external(public_sub['subnet']['network_id'])
             with self.router() as r:
                 self._add_external_gateway_to_router(
@@ -831,7 +895,7 @@ class L3NatDBTestCase(test_db_plugin.QuantumDbPluginV2TestCase):
 
     def test_floatingip_with_assoc_fails(self):
         fmt = 'json'
-        with self.subnet() as public_sub:
+        with self.subnet(cidr='200.0.0.1/24') as public_sub:
             self._set_net_external(public_sub['subnet']['network_id'])
             with self.port() as private_port:
                 with self.router() as r:
@@ -912,16 +976,13 @@ class L3NatDBTestCase(test_db_plugin.QuantumDbPluginV2TestCase):
                 self.assertEquals(body['floatingip']['fixed_ip_address'], None)
                 self.assertEquals(body['floatingip']['router_id'], None)
 
-    def test_double_floating_assoc(self):
+    def test_two_fips_one_port_invalid_return_409(self):
         with self.floatingip_with_assoc() as fip1:
-            with self.subnet() as s:
-                with self.floatingip_no_assoc(s) as fip2:
-                    port_id = fip1['floatingip']['port_id']
-                    body = self._update('floatingips',
-                                        fip2['floatingip']['id'],
-                                        {'floatingip':
-                                         {'port_id': port_id}},
-                                        expected_code=exc.HTTPConflict.code)
+            res = self._create_floatingip(
+                'json',
+                fip1['floatingip']['floating_network_id'],
+                fip1['floatingip']['port_id'])
+            self.assertEqual(res.status_int, exc.HTTPConflict.code)
 
     def test_floating_ip_direct_port_delete_returns_409(self):
         found = False
