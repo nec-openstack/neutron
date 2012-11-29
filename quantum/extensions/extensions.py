@@ -55,6 +55,11 @@ ENABLED_EXTS = {
         'ext_alias': ["quotas"],
         'ext_db_models': ['quantum.extensions._quotav2_model.Quota'],
     },
+    'quantum.plugins.nec.nec_plugin.NECPluginV2':
+    {
+        'ext_alias': ["quotas"],
+        'ext_db_models': ['quantum.extensions._quotav2_model.Quota'],
+    },
 }
 
 
