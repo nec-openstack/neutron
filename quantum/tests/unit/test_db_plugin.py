@@ -331,20 +331,33 @@ class QuantumDbPluginV2TestCase(unittest2.TestCase):
             return self.ext_api
 
     def _delete(self, collection, id,
-                expected_code=webob.exc.HTTPNoContent.code):
+                expected_code=webob.exc.HTTPNoContent.code,
+                quantum_context=None):
         req = self.new_delete_request(collection, id)
+        if quantum_context:
+            # create a specific auth context for this request
+            req.environ['quantum.context'] = quantum_context
         res = req.get_response(self._api_for_resource(collection))
         self.assertEqual(res.status_int, expected_code)
 
-    def _show(self, resource, id, expected_code=webob.exc.HTTPOk.code):
+    def _show(self, resource, id,
+              expected_code=webob.exc.HTTPOk.code,
+              quantum_context=None):
         req = self.new_show_request(resource, id)
+        if quantum_context:
+            # create a specific auth context for this request
+            req.environ['quantum.context'] = quantum_context
         res = req.get_response(self._api_for_resource(resource))
         self.assertEqual(res.status_int, expected_code)
         return self.deserialize('json', res)
 
     def _update(self, resource, id, new_data,
-                expected_code=webob.exc.HTTPOk.code):
+                expected_code=webob.exc.HTTPOk.code,
+                quantum_context=None):
         req = self.new_update_request(resource, new_data, id)
+        if quantum_context:
+            # create a specific auth context for this request
+            req.environ['quantum.context'] = quantum_context
         res = req.get_response(self._api_for_resource(resource))
         self.assertEqual(res.status_int, expected_code)
         return self.deserialize('json', res)
@@ -1994,10 +2007,13 @@ class TestSubnetsV2(QuantumDbPluginV2TestCase):
     def test_delete_subnet_port_exists_owned_by_other(self):
         with self.subnet() as subnet:
             with self.port(subnet=subnet) as port:
-                req = self.new_delete_request('subnets',
-                                              subnet['subnet']['id'])
+                id = subnet['subnet']['id']
+                req = self.new_delete_request('subnets', id)
                 res = req.get_response(self.api)
-                self.assertEquals(res.status_int, 409)
+                data = self.deserialize('json', res)
+                self.assertEqual(res.status_int, 409)
+                msg = str(q_exc.SubnetInUse(subnet_id=id))
+                self.assertEqual(data['QuantumError'], msg)
 
     def test_delete_network(self):
         gateway_ip = '10.0.0.1'
@@ -2181,6 +2197,15 @@ class TestSubnetsV2(QuantumDbPluginV2TestCase):
                     'allocation_pools': allocation_pools}
         subnet = self._test_create_subnet(expected=expected,
                                           gateway_ip=gateway)
+
+    def test_create_force_subnet_gw_values(self):
+        cfg.CONF.set_override('force_gateway_on_subnet', True)
+        with self.network() as network:
+            self._create_subnet('json',
+                                network['network']['id'],
+                                '10.0.0.0/24',
+                                400,
+                                gateway_ip='100.0.0.1')
 
     def test_create_subnet_with_allocation_pool(self):
         gateway_ip = '10.0.0.1'

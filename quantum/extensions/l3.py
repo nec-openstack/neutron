@@ -39,6 +39,12 @@ class RouterInUse(qexception.InUse):
     message = _("Router %(router_id)s still has active ports")
 
 
+class RouterInterfaceInUseByFloatingIP(qexception.InUse):
+    message = _("Router interface for subnet %(subnet_id)s on router "
+                "%(router_id)s cannot be deleted, as it is required "
+                "by one or more floating IPs.")
+
+
 class FloatingIPNotFound(qexception.NotFound):
     message = _("Floating IP %(floatingip_id)s could not be found")
 
@@ -64,6 +70,12 @@ class L3PortInUse(qexception.InUse):
 class ExternalNetworkInUse(qexception.InUse):
     message = _("External network %(net_id)s cannot be updated to be made "
                 "non-external, since it has existing gateway ports")
+
+
+class RouterExternalGatewayInUseByFloatingIp(qexception.InUse):
+    message = _("Gateway cannot be updated for router %(router_id)s, since a "
+                "gateway to external network %(net_id)s is required by one or "
+                "more floating IPs.")
 
 
 def _validate_uuid_or_none(data, valid_values=None):
