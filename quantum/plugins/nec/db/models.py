@@ -49,7 +49,7 @@ class OFCFilter(model_base.BASEV2, HasId, HasQuantumId):
     """Represents a Filter on OpenFlow Network/Controller."""
 
 
-class PortInfo(model_base.BASEV2, HasId):
+class PortInfo(model_base.BASEV2, models_v2.HasId):
     """Represents a Virtual Interface."""
     datapath_id = sa.Column(sa.String(36), nullable=False)
     port_no = sa.Column(sa.Integer, nullable=False)
