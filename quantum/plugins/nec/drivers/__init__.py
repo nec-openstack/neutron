@@ -26,7 +26,7 @@ DRIVER_LIST = {
     'trema_port': DRIVER_PATH % "trema.TremaPortBaseDriver",
     'trema_portmac': DRIVER_PATH % "trema.TremaPortMACBaseDriver",
     'trema_mac': DRIVER_PATH % "trema.TremaMACBaseDriver",
-    'pfc': DRIVER_PATH % "pfc.PFCV3Driver",
+    'pfc': DRIVER_PATH % "pfc.PFCV4Driver",
     'pfc_v3': DRIVER_PATH % "pfc.PFCV3Driver",
     'pfc_v4': DRIVER_PATH % "pfc.PFCV4Driver"}
 

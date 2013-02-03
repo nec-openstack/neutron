@@ -33,6 +33,8 @@ class PFCDriverBase(ofc_driver_base.OFCDriverBase):
 
     PFCDriverBase provides methods to handle PFC resources through REST API.
     This uses ofc resource path instead of ofc resource ID.
+
+    The class implements the API for PFC V4.0 or later.
     """
 
     def __init__(self, conf_ofc):
@@ -73,17 +75,12 @@ class PFCDriverBase(ofc_driver_base.OFCDriverBase):
         return self._generate_pfc_str(desc)[:127]
 
     def create_tenant(self, description, tenant_id=None):
-        path = "/tenants"
-        pfc_desc = self._generate_pfc_description(description)
-        body = {'description': pfc_desc}
-        res = self.client.post(path, body=body)
+        res = self.client.post('/tenants', body={})
         ofc_tenant_id = res['id']
-        ofc_tenant_path = path + '/' + ofc_tenant_id
-        return ofc_tenant_path
+        return '/tenants/' + ofc_tenant_id
 
     def delete_tenant(self, ofc_tenant_id):
-        path = ofc_tenant_id
-        return self.client.delete(path)
+        return self.client.delete(ofc_tenant_id)
 
     def create_network(self, ofc_tenant_id, description, network_id=None):
         path = "%s/networks" % ofc_tenant_id
@@ -91,18 +88,15 @@ class PFCDriverBase(ofc_driver_base.OFCDriverBase):
         body = {'description': pfc_desc}
         res = self.client.post(path, body=body)
         ofc_network_id = res['id']
-        ofc_network_path = path + '/' + ofc_network_id
-        return ofc_network_path
+        return path + '/' + ofc_network_id
 
     def update_network(self, ofc_tenant_id, ofc_network_id, description):
-        path = ofc_network_id
         pfc_desc = self._generate_pfc_description(description)
         body = {'description': pfc_desc}
-        return self.client.put(path, body=body)
+        return self.client.put(ofc_network_id, body=body)
 
     def delete_network(self, ofc_tenant_id, ofc_network_id):
-        path = ofc_network_id
-        return self.client.delete(path)
+        return self.client.delete(ofc_network_id)
 
     def create_port(self, ofc_tenant_id, ofc_network_id, portinfo,
                     port_id=None):
@@ -112,20 +106,17 @@ class PFCDriverBase(ofc_driver_base.OFCDriverBase):
                 'vid': str(portinfo.vlan_id)}
         res = self.client.post(path, body=body)
         ofc_port_id = res['id']
-        ofc_port_path = path + '/' + ofc_port_id
-        return ofc_port_path
+        return path + '/' + ofc_port_id
 
     def delete_port(self, ofc_tenant_id, ofc_network_id, ofc_port_id):
-        path = ofc_port_id
-        return self.client.delete(path)
+        return self.client.delete(ofc_port_id)
 
 
 class PFCV3Driver(PFCDriverBase):
 
-    def create_tenant(self, description, tenant_id=None):
-        path = "/tenants"
+    def create_tenant(self, description, tenant_id):
         ofc_tenant_id = self._generate_pfc_id(tenant_id)
-        ofc_tenant_path = path + '/' + ofc_tenant_id
+        ofc_tenant_path = "/tenants/" + ofc_tenant_id
         return ofc_tenant_path
 
     def delete_tenant(self, ofc_tenant_id):
@@ -133,13 +124,4 @@ class PFCV3Driver(PFCDriverBase):
 
 
 class PFCV4Driver(PFCDriverBase):
-
-    def create_tenant(self, description, tenant_id=None):
-        path = "/tenants"
-        ofc_tenant_id = self._generate_pfc_id(tenant_id)
-        pfc_desc = self._generate_pfc_description(description)
-        body = {'id': ofc_tenant_id,
-                'description': pfc_desc}
-        res = self.client.post(path, body=body)
-        ofc_tenant_path = path + '/' + ofc_tenant_id
-        return ofc_tenant_path
+    pass
