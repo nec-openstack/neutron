@@ -14,9 +14,9 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 # @author: Ryota MIBU
+# @author: Akihiro MOTOKI
 
 import re
-import uuid
 
 from quantum.plugins.nec.common import ofc_client
 from quantum.plugins.nec import ofc_driver_base
@@ -90,15 +90,15 @@ class PFCDriverBase(ofc_driver_base.OFCDriverBase):
         ofc_network_id = res['id']
         return path + '/' + ofc_network_id
 
-    def update_network(self, ofc_tenant_id, ofc_network_id, description):
+    def update_network(self, ofc_network_id, description):
         pfc_desc = self._generate_pfc_description(description)
         body = {'description': pfc_desc}
         return self.client.put(ofc_network_id, body=body)
 
-    def delete_network(self, ofc_tenant_id, ofc_network_id):
+    def delete_network(self, ofc_network_id):
         return self.client.delete(ofc_network_id)
 
-    def create_port(self, ofc_tenant_id, ofc_network_id, portinfo,
+    def create_port(self, ofc_network_id, portinfo,
                     port_id=None):
         path = "%s/ports" % ofc_network_id
         body = {'datapath_id': portinfo.datapath_id,
@@ -108,7 +108,7 @@ class PFCDriverBase(ofc_driver_base.OFCDriverBase):
         ofc_port_id = res['id']
         return path + '/' + ofc_port_id
 
-    def delete_port(self, ofc_tenant_id, ofc_network_id, ofc_port_id):
+    def delete_port(self, ofc_port_id):
         return self.client.delete(ofc_port_id)
 
 

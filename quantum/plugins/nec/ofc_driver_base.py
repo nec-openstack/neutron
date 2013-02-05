@@ -14,6 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 # @author: Ryota MIBU
+# @author: Akihiro MOTOKI
 
 from abc import ABCMeta, abstractmethod
 
@@ -53,14 +54,17 @@ class OFCDriverBase(object):
 
         :param ofc_tenant_id: a OFC tenant ID in which a new network belongs.
         :param description: A description of this network.
-        :param network_id: A hint of a OFC network ID.
+        :param network_id: A hint of an ID of OFC network.
         :returns: ID of the network created at OpenFlow Controller.
+            ID returned must be unique in the OpenFlow Controller.
+            If a network is identified in conjunction with other information
+            such as a tenant ID, such information should be included in the ID.
         :raises: quantum.plugin.nec.common.exceptions.OFCException
         """
         pass
 
     @abstractmethod
-    def update_network(self, ofc_tenant_id, ofc_network_id, description):
+    def update_network(self, ofc_network_id, description):
         """Update description of specified network.
 
         :raises: quantum.plugin.nec.common.exceptions.OFCException
@@ -68,7 +72,7 @@ class OFCDriverBase(object):
         pass
 
     @abstractmethod
-    def delete_network(self, ofc_tenant_id, ofc_network_id):
+    def delete_network(self, ofc_network_id):
         """Delete a netwrok at OpenFlow Controller.
 
         :raises: quantum.plugin.nec.common.exceptions.OFCException
@@ -76,9 +80,9 @@ class OFCDriverBase(object):
         pass
 
     @abstractmethod
-    def create_port(self, ofc_tenant_id, ofc_network_id, portinfo,
+    def create_port(self, ofc_network_id, portinfo,
                     port_id=None):
-        """Create a new port on specified tenant and network at OFC.
+        """Create a new port on specified network at OFC.
 
         :param ofc_network_id: a OFC tenant ID in which a new port belongs.
         :param portinfo: An OpenFlow information of this port.
@@ -87,7 +91,10 @@ class OFCDriverBase(object):
                      'vlan_id': VLAN ID that a port tagging.
                      'mac': Mac address.
                     }
-        :param port_id: A hint of a OFC port ID.
+        :param port_id: A hint of an ID of OFC port.
+            ID returned must be unique in the OpenFlow Controller.
+            If a port is identified in combination with a network or
+            a tenant, such information should be included in the ID.
 
         :returns: ID of the port created at OpenFlow Controller.
         :raises: quantum.plugin.nec.common.exceptions.OFCException
@@ -95,7 +102,7 @@ class OFCDriverBase(object):
         pass
 
     @abstractmethod
-    def delete_port(self, ofc_tenant_id, ofc_network_id, ofc_port_id):
+    def delete_port(self, ofc_port_id):
         """Delete a port at OpenFlow Controller.
 
         :raises: quantum.plugin.nec.common.exceptions.OFCException

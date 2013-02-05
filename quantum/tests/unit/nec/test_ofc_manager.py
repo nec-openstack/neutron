@@ -93,7 +93,7 @@ class OFCManagerTest(unittest.TestCase):
         self.ofc.create_ofc_tenant(t)
         self.ofc.create_ofc_network(t, n)
         self.assertTrue(ndb.find_ofc_item(nmodels.OFCNetwork, n))
-        self.ofc.delete_ofc_network(t, n)
+        self.ofc.delete_ofc_network(n)
         self.assertFalse(ndb.find_ofc_item(nmodels.OFCNetwork, n))
 
     def testg_create_ofc_port(self):
@@ -103,7 +103,7 @@ class OFCManagerTest(unittest.TestCase):
         self.ofc.create_ofc_network(t, n)
         ndb.add_portinfo(p, "0xabc", 1, 65535, "00:11:22:33:44:55")
         self.assertFalse(ndb.find_ofc_item(nmodels.OFCPort, p))
-        self.ofc.create_ofc_port(t, n, p)
+        self.ofc.create_ofc_port(n, p)
         self.assertTrue(ndb.find_ofc_item(nmodels.OFCPort, p))
         port = ndb.find_ofc_item(nmodels.OFCPort, p)
         self.assertEqual(port.id, "ofc-" + p[:-4])
@@ -115,7 +115,7 @@ class OFCManagerTest(unittest.TestCase):
         self.ofc.create_ofc_network(t, n)
         ndb.add_portinfo(p, "0xabc", 2, 65535, "00:12:22:33:44:55")
         self.assertFalse(self.ofc.exists_ofc_port(p))
-        self.ofc.create_ofc_port(t, n, p)
+        self.ofc.create_ofc_port(n, p)
         self.assertTrue(self.ofc.exists_ofc_port(p))
 
     def testi_delete_ofc_port(self):
@@ -124,9 +124,9 @@ class OFCManagerTest(unittest.TestCase):
         self.ofc.create_ofc_tenant(t)
         self.ofc.create_ofc_network(t, n)
         ndb.add_portinfo(p, "0xabc", 3, 65535, "00:13:22:33:44:55")
-        self.ofc.create_ofc_port(t, n, p)
+        self.ofc.create_ofc_port(n, p)
         self.assertTrue(ndb.find_ofc_item(nmodels.OFCPort, p))
-        self.ofc.delete_ofc_port(t, n, p)
+        self.ofc.delete_ofc_port(p)
         self.assertFalse(ndb.find_ofc_item(nmodels.OFCPort, p))
 
     def testj_create_ofc_packet_filter(self):
@@ -135,7 +135,7 @@ class OFCManagerTest(unittest.TestCase):
         self.ofc.create_ofc_tenant(t)
         self.ofc.create_ofc_network(t, n)
         self.assertFalse(ndb.find_ofc_item(nmodels.OFCFilter, f))
-        self.ofc.create_ofc_packet_filter(t, n, f, {})
+        self.ofc.create_ofc_packet_filter(n, f, {})
         self.assertTrue(ndb.find_ofc_item(nmodels.OFCFilter, f))
         _filter = ndb.find_ofc_item(nmodels.OFCFilter, f)
         self.assertEqual(_filter.id, "ofc-" + f[:-4])
@@ -146,7 +146,7 @@ class OFCManagerTest(unittest.TestCase):
         self.ofc.create_ofc_tenant(t)
         self.ofc.create_ofc_network(t, n)
         self.assertFalse(self.ofc.exists_ofc_packet_filter(f))
-        self.ofc.create_ofc_packet_filter(t, n, f, {})
+        self.ofc.create_ofc_packet_filter(n, f, {})
         self.assertTrue(self.ofc.exists_ofc_packet_filter(f))
 
     def testl_delete_ofc_packet_filter(self):
@@ -154,7 +154,7 @@ class OFCManagerTest(unittest.TestCase):
         t, n, p, f, none = self.get_random_params()
         self.ofc.create_ofc_tenant(t)
         self.ofc.create_ofc_network(t, n)
-        self.ofc.create_ofc_packet_filter(t, n, f, {})
+        self.ofc.create_ofc_packet_filter(n, f, {})
         self.assertTrue(ndb.find_ofc_item(nmodels.OFCFilter, f))
-        self.ofc.delete_ofc_packet_filter(t, n, f)
+        self.ofc.delete_ofc_packet_filter(f)
         self.assertFalse(ndb.find_ofc_item(nmodels.OFCFilter, f))

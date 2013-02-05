@@ -14,6 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 # @author: Ryota MIBU
+# @author: Akihiro MOTOKI
 
 from quantum.common import rpc as q_rpc
 from quantum.common import topics
@@ -149,8 +150,7 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base, l3_db.L3_NAT_db_mixin):
                             "ofc_port already exists."))
             else:
                 try:
-                    self.ofc.create_ofc_port(port['tenant_id'],
-                                             port['network_id'],
+                    self.ofc.create_ofc_port(port['network_id'],
                                              port['id'])
                 except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
                     reason = _("create_ofc_port() failed due to %s") % exc
@@ -169,9 +169,7 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base, l3_db.L3_NAT_db_mixin):
         port_status = OperationalStatus.DOWN
         if self.ofc.exists_ofc_port(port['id']):
             try:
-                self.ofc.delete_ofc_port(port['tenant_id'],
-                                         port['network_id'],
-                                         port['id'])
+                self.ofc.delete_ofc_port(port['id'])
             except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
                 reason = _("delete_ofc_port() failed due to %s") % exc
                 LOG.error(reason)
@@ -291,7 +289,7 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base, l3_db.L3_NAT_db_mixin):
 
         super(NECPluginV2, self).delete_network(context, id)
         try:
-            self.ofc.delete_ofc_network(tenant_id, id)
+            self.ofc.delete_ofc_network(id)
         except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
             reason = _("delete_network() failed due to %s") % exc
             # NOTE: The OFC configuration of this network could be remained
@@ -446,8 +444,7 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base, l3_db.L3_NAT_db_mixin):
             else:
                 try:
                     (self.ofc.
-                     create_ofc_packet_filter(packet_filter['tenant_id'],
-                                              packet_filter['network_id'],
+                     create_ofc_packet_filter(packet_filter['network_id'],
                                               packet_filter['id'],
                                               packet_filter))
                 except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
@@ -468,9 +465,7 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base, l3_db.L3_NAT_db_mixin):
                         "ofc_packet_filter does not exist."))
         else:
             try:
-                self.ofc.delete_ofc_packet_filter(packet_filter['tenant_id'],
-                                                  packet_filter['network_id'],
-                                                  packet_filter['id'])
+                self.ofc.delete_ofc_packet_filter(packet_filter['id'])
             except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
                 reason = _("delete_ofc_packet_filter() failed due to "
                            "%s") % exc

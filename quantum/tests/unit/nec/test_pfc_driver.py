@@ -136,7 +136,7 @@ class PFCDriverTestBase():
         ofc.OFCClient.do_request("PUT", net_path, body=body)
         self.mox.ReplayAll()
 
-        self.driver.update_network(_ofc(t), net_path, description)
+        self.driver.update_network(net_path, description)
         self.mox.VerifyAll()
 
     def testf_delete_network(self):
@@ -146,7 +146,7 @@ class PFCDriverTestBase():
         ofc.OFCClient.do_request("DELETE", net_path)
         self.mox.ReplayAll()
 
-        self.driver.delete_network(_ofc(t), net_path)
+        self.driver.delete_network(net_path)
         self.mox.VerifyAll()
 
     def testg_create_port(self):
@@ -163,7 +163,7 @@ class PFCDriverTestBase():
         ofc.OFCClient.do_request("POST", post_path, body=body).AndReturn(port)
         self.mox.ReplayAll()
 
-        ret = self.driver.create_port(_ofc(t), net_path, p, p.id)
+        ret = self.driver.create_port(net_path, p, p.id)
         self.mox.VerifyAll()
         self.assertEqual(ret, port_path)
 
@@ -176,7 +176,7 @@ class PFCDriverTestBase():
         ofc.OFCClient.do_request("DELETE", port_path)
         self.mox.ReplayAll()
 
-        self.driver.delete_port(_ofc(t), net_path, port_path)
+        self.driver.delete_port(port_path)
         self.mox.VerifyAll()
 
 
@@ -188,7 +188,14 @@ class PFCV3DriverTest(PFCDriverTestBase, unittest.TestCase):
     driver = 'pfc_v3'
 
     def testa_create_tenant(self):
-        pass
+        t, n, p = self.get_ofc_item_random_params()
+        self.mox.ReplayAll()
+
+        ret = self.driver.create_tenant('dummy_desc', t)
+        self.mox.VerifyAll()
+
+        ofc_t_path = "/tenants/" + self._generate_ofc_tenant_id(t)
+        self.assertEqual(ofc_t_path, ret)
 
     def testc_delete_tenant(self):
         pass

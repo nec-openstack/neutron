@@ -63,27 +63,30 @@ class TremaDriverNetworkTestBase(TremaDriverTestBase):
         ofc_client.OFCClient.do_request("POST", "/networks", body=body)
         self.mox.ReplayAll()
 
-        self.driver.create_network(t, description, n)
+        ret = self.driver.create_network(t, description, n)
         self.mox.VerifyAll()
+        self.assertEqual(ret, '/networks/%s' % n)
 
     def testb_update_network(self):
         t, n, p = self.get_ofc_item_random_params()
         description = "desc of %s" % n
 
+        net_path = "/networks/%s" % n
         body = {'description': description}
-        ofc_client.OFCClient.do_request("PUT", "/networks/%s" % n, body=body)
+        ofc_client.OFCClient.do_request("PUT", net_path, body=body)
         self.mox.ReplayAll()
 
-        self.driver.update_network(t, n, description)
+        self.driver.update_network(net_path, description)
         self.mox.VerifyAll()
 
     def testc_delete_network(self):
         t, n, p = self.get_ofc_item_random_params()
 
-        ofc_client.OFCClient.do_request("DELETE", "/networks/%s" % n)
+        net_path = "/networks/%s" % n
+        ofc_client.OFCClient.do_request("DELETE", net_path)
         self.mox.ReplayAll()
 
-        self.driver.delete_network(t, n)
+        self.driver.delete_network(net_path)
         self.mox.VerifyAll()
 
 
@@ -92,8 +95,9 @@ class TremaPortBaseDriverTest(TremaDriverNetworkTestBase, unittest.TestCase):
     driver_name = "trema_port"
 
     def testd_create_port(self):
-        t, n, p = self.get_ofc_item_random_params()
+        _t, n, p = self.get_ofc_item_random_params()
 
+        net_path = "/networks/%s" % n
         body = {'id': p.id,
                 'datapath_id': p.datapath_id,
                 'port': str(p.port_no),
@@ -102,17 +106,18 @@ class TremaPortBaseDriverTest(TremaDriverNetworkTestBase, unittest.TestCase):
                                         "/networks/%s/ports" % n, body=body)
         self.mox.ReplayAll()
 
-        self.driver.create_port(t, n, p, p.id)
+        ret = self.driver.create_port(net_path, p, p.id)
         self.mox.VerifyAll()
+        self.assertEqual(ret, '/networks/%s/ports/%s' % (n, p.id))
 
     def testd_delete_port(self):
         t, n, p = self.get_ofc_item_random_params()
 
-        ofc_client.OFCClient.do_request("DELETE",
-                                        "/networks/%s/ports/%s" % (n, p.id))
+        p_path = "/networks/%s/ports/%s" % (n, p.id)
+        ofc_client.OFCClient.do_request("DELETE", p_path)
         self.mox.ReplayAll()
 
-        self.driver.delete_port(t, n, p.id)
+        self.driver.delete_port(p_path)
         self.mox.VerifyAll()
 
 
@@ -125,6 +130,7 @@ class TremaPortMACBaseDriverTest(TremaDriverNetworkTestBase,
         t, n, p = self.get_ofc_item_random_params()
         dummy_port = "dummy-%s" % p.id
 
+        net_path = "/networks/%s" % n
         path_1 = "/networks/%s/ports" % n
         body_1 = {'id': dummy_port,
                   'datapath_id': p.datapath_id,
@@ -138,8 +144,10 @@ class TremaPortMACBaseDriverTest(TremaDriverNetworkTestBase,
         ofc_client.OFCClient.do_request("DELETE", path_3)
         self.mox.ReplayAll()
 
-        self.driver.create_port(t, n, p, p.id)
+        ret = self.driver.create_port(net_path, p, p.id)
         self.mox.VerifyAll()
+        port_path = "/networks/%s/ports/%s/attachments/%s" % (n, dummy_port, p.id)
+        self.assertEqual(ret, port_path)
 
     def testd_delete_port(self):
         t, n, p = self.get_ofc_item_random_params()
@@ -149,7 +157,7 @@ class TremaPortMACBaseDriverTest(TremaDriverNetworkTestBase,
         ofc_client.OFCClient.do_request("DELETE", path)
         self.mox.ReplayAll()
 
-        self.driver.delete_port(t, n, p.id)
+        self.driver.delete_port(path)
         self.mox.VerifyAll()
 
 
@@ -160,13 +168,15 @@ class TremaMACBaseDriverTest(TremaDriverNetworkTestBase, unittest.TestCase):
     def testd_create_port(self):
         t, n, p = self.get_ofc_item_random_params()
 
+        net_path = "/networks/%s" % n
         path = "/networks/%s/attachments" % n
         body = {'id': p.id, 'mac': p.mac}
         ofc_client.OFCClient.do_request("POST", path, body=body)
         self.mox.ReplayAll()
 
-        self.driver.create_port(t, n, p, p.id)
+        ret = self.driver.create_port(net_path, p, p.id)
         self.mox.VerifyAll()
+        self.assertEqual(ret, '/networks/%s/attachments/%s' % (n, p.id))
 
     def testd_delete_port(self):
         t, n, p = self.get_ofc_item_random_params()
@@ -175,7 +185,7 @@ class TremaMACBaseDriverTest(TremaDriverNetworkTestBase, unittest.TestCase):
         ofc_client.OFCClient.do_request("DELETE", path)
         self.mox.ReplayAll()
 
-        self.driver.delete_port(t, n, p.id)
+        self.driver.delete_port(path)
         self.mox.VerifyAll()
 
 
@@ -208,6 +218,7 @@ class TremaFilterDriverTest(TremaDriverTestBase, unittest.TestCase):
     def testa_create_filter(self):
         t, n, p, f = self.get_ofc_item_random_params()
 
+        net_path = "/networks/%s" % n
         ofp_wildcards = 'dl_vlan,dl_vlan_pcp,nw_tos,dl_dst,' + \
                         'nw_src:32,nw_dst:32,tp_src,tp_dst'
         body = {'id': f.id,
@@ -223,14 +234,16 @@ class TremaFilterDriverTest(TremaDriverTestBase, unittest.TestCase):
         ofc_client.OFCClient.do_request("POST", "/filters", body=body)
         self.mox.ReplayAll()
 
-        self.driver.create_filter(t, n, f, p, f.id)
+        ret = self.driver.create_filter(net_path, f, p, f.id)
         self.mox.VerifyAll()
+        self.assertEqual(ret, '/filters/%s' % f.id)
 
     def testb_delete_filter(self):
         t, n, p, f = self.get_ofc_item_random_params()
 
-        ofc_client.OFCClient.do_request("DELETE", "/filters/%s" % f.id)
+        f_path = "/filters/%s" % f.id
+        ofc_client.OFCClient.do_request("DELETE", f_path)
         self.mox.ReplayAll()
 
-        self.driver.delete_filter(t, n, f.id)
+        self.driver.delete_filter(f_path)
         self.mox.VerifyAll()

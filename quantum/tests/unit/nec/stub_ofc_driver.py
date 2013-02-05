@@ -32,25 +32,25 @@ class StubOFCDriver(ofc_driver_base.OFCDriverBase):
     def create_network(self, ofc_tenant_id, description, network_id=None):
         return "ofc-" + network_id[:-4]
 
-    def update_network(self, ofc_tenant_id, ofc_network_id, description):
+    def update_network(self, ofc_network_id, description):
         pass
 
-    def delete_network(self, ofc_tenant_id, ofc_network_id):
+    def delete_network(self, ofc_network_id):
         pass
 
-    def create_port(self, ofc_tenant_id, ofc_network_id, info, port_id=None):
+    def create_port(self, ofc_network_id, info, port_id=None):
         return "ofc-" + port_id[:-4]
 
-    def delete_port(self, ofc_tenant_id, ofc_network_id, ofc_port_id):
+    def delete_port(self, ofc_port_id):
         pass
 
     @classmethod
     def filter_supported(cls):
         return True
 
-    def create_filter(self, ofc_tenant_id, ofc_network_id, filter_dict,
+    def create_filter(self, ofc_network_id, filter_dict,
                       portinfo=None, filter_id=None):
         return "ofc-" + filter_id[:-4]
 
-    def delete_filter(self, ofc_tenant_id, ofc_network_id, ofc_filter_id):
+    def delete_filter(self, ofc_filter_id):
         pass
