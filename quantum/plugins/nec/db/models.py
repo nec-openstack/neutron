@@ -57,7 +57,7 @@ class PortInfo(model_base.BASEV2, models_v2.HasId):
     mac = sa.Column(sa.String(32), nullable=False)
 
 
-class PacketFilter(model_base.BASEV2, HasId, models_v2.HasTenant):
+class PacketFilter(model_base.BASEV2, models_v2.HasId, models_v2.HasTenant):
     """Represents a packet filter"""
     network_id = sa.Column(sa.String(36),
                            sa.ForeignKey('networks.id', ondelete="CASCADE"),
