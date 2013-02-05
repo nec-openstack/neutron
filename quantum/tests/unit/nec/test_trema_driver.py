@@ -146,7 +146,8 @@ class TremaPortMACBaseDriverTest(TremaDriverNetworkTestBase,
 
         ret = self.driver.create_port(net_path, p, p.id)
         self.mox.VerifyAll()
-        port_path = "/networks/%s/ports/%s/attachments/%s" % (n, dummy_port, p.id)
+        port_path = "/networks/%s/ports/%s/attachments/%s" % (n, dummy_port,
+                                                              p.id)
         self.assertEqual(ret, port_path)
 
     def testd_delete_port(self):
