@@ -48,20 +48,20 @@ def get_ofc_item(model, id):
         return None
 
 
-def find_ofc_item(model, quantum_id):
+def find_ofc_item(model, ofc_id):
     session = db.get_session()
     try:
         return (session.query(model).
-                filter_by(quantum_id=quantum_id).
+                filter_by(ofc_id=ofc_id).
                 one())
     except sa.orm.exc.NoResultFound:
         return None
 
 
-def add_ofc_item(model, id, quantum_id):
+def add_ofc_item(model, id, ofc_id):
     session = db.get_session()
     try:
-        item = model(id=id, quantum_id=quantum_id)
+        item = model(id=id, ofc_id=ofc_id)
         session.add(item)
         session.flush()
     except Exception as exc:

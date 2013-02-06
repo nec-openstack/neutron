@@ -42,16 +42,16 @@ class OFCManager(object):
 
     def _get_ofc_id(self, resource, quantum_id):
         model = self.resource_map[resource]
-        ofc_item = ndb.find_ofc_item(model, quantum_id)
+        ofc_item = ndb.get_ofc_item(model, quantum_id)
         if not ofc_item:
             reason = _("NotFound %(resource)s for "
                        "quantum_id=%(quantum_id)s.") % locals()
             raise nexc.OFCConsistencyBroken(reason=reason)
-        return ofc_item.id
+        return ofc_item.ofc_id
 
     def _exists_ofc_item(self, resource, quantum_id):
         model = self.resource_map[resource]
-        if ndb.find_ofc_item(model, quantum_id):
+        if ndb.get_ofc_item(model, quantum_id):
             return True
         else:
             return False
@@ -61,7 +61,7 @@ class OFCManager(object):
     def create_ofc_tenant(self, tenant_id):
         desc = "ID=%s at OpenStack." % tenant_id
         ofc_tenant_id = self.driver.create_tenant(desc, tenant_id)
-        ndb.add_ofc_item(nmodels.OFCTenant, ofc_tenant_id, tenant_id)
+        ndb.add_ofc_item(nmodels.OFCTenant, tenant_id, ofc_tenant_id)
 
     def exists_ofc_tenant(self, tenant_id):
         return self._exists_ofc_item("ofc_tenant", tenant_id)
@@ -70,7 +70,7 @@ class OFCManager(object):
         ofc_tenant_id = self._get_ofc_id("ofc_tenant", tenant_id)
 
         self.driver.delete_tenant(ofc_tenant_id)
-        ndb.del_ofc_item(nmodels.OFCTenant, ofc_tenant_id)
+        ndb.del_ofc_item(nmodels.OFCTenant, tenant_id)
 
     # Network
 
@@ -80,7 +80,7 @@ class OFCManager(object):
         desc = "ID=%s Name=%s at Quantum." % (network_id, network_name)
         ofc_net_id = self.driver.create_network(ofc_tenant_id, desc,
                                                 network_id)
-        ndb.add_ofc_item(nmodels.OFCNetwork, ofc_net_id, network_id)
+        ndb.add_ofc_item(nmodels.OFCNetwork, network_id, ofc_net_id)
 
     def update_ofc_network(self, network_id, network_name):
         ofc_net_id = self._get_ofc_id("ofc_network", network_id)
@@ -95,7 +95,7 @@ class OFCManager(object):
         ofc_net_id = self._get_ofc_id("ofc_network", network_id)
 
         self.driver.delete_network(ofc_net_id)
-        ndb.del_ofc_item(nmodels.OFCNetwork, ofc_net_id)
+        ndb.del_ofc_item(nmodels.OFCNetwork, network_id)
 
     # Port
 
@@ -106,7 +106,7 @@ class OFCManager(object):
             raise nexc.PortInfoNotFound(id=port_id)
 
         ofc_port_id = self.driver.create_port(ofc_net_id, portinfo, port_id)
-        ndb.add_ofc_item(nmodels.OFCPort, ofc_port_id, port_id)
+        ndb.add_ofc_item(nmodels.OFCPort, port_id, ofc_port_id)
 
     def exists_ofc_port(self, port_id):
         return self._exists_ofc_item("ofc_port", port_id)
@@ -115,7 +115,7 @@ class OFCManager(object):
         ofc_port_id = self._get_ofc_id("ofc_port", port_id)
 
         self.driver.delete_port(ofc_port_id)
-        ndb.del_ofc_item(nmodels.OFCPort, ofc_port_id)
+        ndb.del_ofc_item(nmodels.OFCPort, port_id)
 
     # PacketFilter
 
@@ -131,7 +131,7 @@ class OFCManager(object):
 
         ofc_pf_id = self.driver.create_filter(ofc_net_id,
                                               filter_dict, portinfo, filter_id)
-        ndb.add_ofc_item(nmodels.OFCFilter, ofc_pf_id, filter_id)
+        ndb.add_ofc_item(nmodels.OFCFilter, filter_id, ofc_pf_id)
 
     def exists_ofc_packet_filter(self, filter_id):
         return self._exists_ofc_item("ofc_packet_filter", filter_id)
@@ -140,4 +140,4 @@ class OFCManager(object):
         ofc_pf_id = self._get_ofc_id("ofc_packet_filter", filter_id)
 
         res = self.driver.delete_filter(ofc_pf_id)
-        ndb.del_ofc_item(nmodels.OFCFilter, ofc_pf_id)
+        ndb.del_ofc_item(nmodels.OFCFilter, filter_id)

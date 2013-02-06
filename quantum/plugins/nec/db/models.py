@@ -22,30 +22,24 @@ from quantum.db import models_v2
 from quantum.openstack.common import uuidutils
 
 
-class HasId(object):
-    """Logical ID on OpenFlow Controller"""
-    id = sa.Column(sa.String(255), primary_key=True,
-                   default=uuidutils.generate_uuid)
+class OFCId(object):
+    """Resource ID on OpenFlow Controller"""
+    ofc_id = sa.Column(sa.String(255), unique=True, nullable=False)
 
 
-class HasQuantumId(object):
-    """Logical ID on Quantum"""
-    quantum_id = sa.Column(sa.String(36), nullable=False)
-
-
-class OFCTenant(model_base.BASEV2, HasId, HasQuantumId):
+class OFCTenant(model_base.BASEV2, models_v2.HasId, OFCId):
     """Represents a Tenant on OpenFlow Network/Controller."""
 
 
-class OFCNetwork(model_base.BASEV2, HasId, HasQuantumId):
+class OFCNetwork(model_base.BASEV2, models_v2.HasId, OFCId):
     """Represents a Network on OpenFlow Network/Controller."""
 
 
-class OFCPort(model_base.BASEV2, HasId, HasQuantumId):
+class OFCPort(model_base.BASEV2, models_v2.HasId, OFCId):
     """Represents a Port on OpenFlow Network/Controller."""
 
 
-class OFCFilter(model_base.BASEV2, HasId, HasQuantumId):
+class OFCFilter(model_base.BASEV2, models_v2.HasId, OFCId):
     """Represents a Filter on OpenFlow Network/Controller."""
 
 

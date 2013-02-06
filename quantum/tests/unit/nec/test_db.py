@@ -45,13 +45,13 @@ class NECPluginV2DBTest(unittest.TestCase):
     def testa_add_ofc_item(self):
         """test add OFC item"""
         o, q, n = self.get_ofc_item_random_params()
-        tenant = ndb.add_ofc_item(nmodels.OFCTenant, o, q)
-        self.assertEqual(tenant.id, o)
-        self.assertEqual(tenant.quantum_id, q)
+        tenant = ndb.add_ofc_item(nmodels.OFCTenant, q, o)
+        self.assertEqual(tenant.ofc_id, o)
+        self.assertEqual(tenant.id, q)
 
         exception_raised = False
         try:
-            ndb.add_ofc_item(nmodels.OFCTenant, o, q)
+            ndb.add_ofc_item(nmodels.OFCTenant, q, o)
         except nexc.NECDBException:
             exception_raised = True
         self.assertTrue(exception_raised)
@@ -59,10 +59,10 @@ class NECPluginV2DBTest(unittest.TestCase):
     def testb_get_ofc_item(self):
         """test get OFC item"""
         o, q, n = self.get_ofc_item_random_params()
-        ndb.add_ofc_item(nmodels.OFCTenant, o, q)
-        tenant = ndb.get_ofc_item(nmodels.OFCTenant, o)
-        self.assertEqual(tenant.id, o)
-        self.assertEqual(tenant.quantum_id, q)
+        ndb.add_ofc_item(nmodels.OFCTenant, q, o)
+        tenant = ndb.get_ofc_item(nmodels.OFCTenant, q)
+        self.assertEqual(tenant.ofc_id, o)
+        self.assertEqual(tenant.id, q)
 
         tenant_none = ndb.get_ofc_item(nmodels.OFCTenant, n)
         self.assertEqual(None, tenant_none)
@@ -70,10 +70,10 @@ class NECPluginV2DBTest(unittest.TestCase):
     def testc_find_ofc_item(self):
         """test find OFC item"""
         o, q, n = self.get_ofc_item_random_params()
-        ndb.add_ofc_item(nmodels.OFCTenant, o, q)
-        tenant = ndb.find_ofc_item(nmodels.OFCTenant, q)
-        self.assertEqual(tenant.id, o)
-        self.assertEqual(tenant.quantum_id, q)
+        ndb.add_ofc_item(nmodels.OFCTenant, q, o)
+        tenant = ndb.find_ofc_item(nmodels.OFCTenant, o)
+        self.assertEqual(tenant.ofc_id, o)
+        self.assertEqual(tenant.id, q)
 
         tenant_none = ndb.find_ofc_item(nmodels.OFCTenant, n)
         self.assertEqual(None, tenant_none)
@@ -81,12 +81,12 @@ class NECPluginV2DBTest(unittest.TestCase):
     def testc_del_ofc_item(self):
         """test delete OFC item"""
         o, q, n = self.get_ofc_item_random_params()
-        ndb.add_ofc_item(nmodels.OFCTenant, o, q)
-        ndb.del_ofc_item(nmodels.OFCTenant, o)
+        ndb.add_ofc_item(nmodels.OFCTenant, q, o)
+        ndb.del_ofc_item(nmodels.OFCTenant, q)
 
         tenant_none = ndb.get_ofc_item(nmodels.OFCTenant, q)
         self.assertEqual(None, tenant_none)
-        tenant_none = ndb.find_ofc_item(nmodels.OFCTenant, q)
+        tenant_none = ndb.find_ofc_item(nmodels.OFCTenant, o)
         self.assertEqual(None, tenant_none)
 
     def get_portinfo_random_params(self):
