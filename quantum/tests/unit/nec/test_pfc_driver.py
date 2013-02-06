@@ -96,7 +96,7 @@ class PFCDriverTestBase():
     def testa_create_tenant(self):
         t, n, p = self.get_ofc_item_random_params()
         ofc_t = self._generate_ofc_tenant_id(t)
-        self._create_tenant(t, ofc_t)
+        self._create_tenant(t, ofc_t, post_id=True)
 
     def testc_delete_tenant(self):
         t, n, p = self.get_ofc_item_random_params()

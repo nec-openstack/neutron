@@ -75,8 +75,9 @@ class PFCDriverBase(ofc_driver_base.OFCDriverBase):
         return self._generate_pfc_str(desc)[:127]
 
     def create_tenant(self, description, tenant_id=None):
-        res = self.client.post('/tenants', body={})
-        ofc_tenant_id = res['id']
+        ofc_tenant_id = self._generate_pfc_id(tenant_id)
+        body = {'id': ofc_tenant_id}
+        res = self.client.post('/tenants', body=body)
         return '/tenants/' + ofc_tenant_id
 
     def delete_tenant(self, ofc_tenant_id):
