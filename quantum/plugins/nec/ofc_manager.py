@@ -44,8 +44,8 @@ class OFCManager(object):
         model = self.resource_map[resource]
         ofc_item = ndb.get_ofc_item(model, quantum_id)
         if not ofc_item:
-            reason = _("NotFound %(resource)s for "
-                       "quantum_id=%(quantum_id)s.") % locals()
+            reason = (_("NotFound %(resource)s for quantum_id=%(id)s.")
+                      % {'resource': resource, 'id': quantum_id})
             raise nexc.OFCConsistencyBroken(reason=reason)
         return ofc_item.ofc_id
 

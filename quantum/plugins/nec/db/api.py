@@ -80,7 +80,8 @@ def del_ofc_item(model, id):
         session.flush()
     except sa.orm.exc.NoResultFound:
         LOG.warning(_("_del_ofc_item(): NotFound item "
-                      "(model=%(model)s, id=%(id)s) "), locals())
+                      "(model=%(model)s, id=%(id)s) "),
+                    {'model': model, 'id': id})
 
 
 def get_portinfo(id):

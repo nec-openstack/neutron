@@ -228,7 +228,8 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base, l3_db.L3_NAT_db_mixin):
         or deactivate ports and packetfilters associated with the network.
         """
         LOG.debug(_("NECPluginV2.update_network() called, "
-                    "id=%(id)s network=%(network)s ."), locals())
+                    "id=%(id)s network=%(network)s ."),
+                  {'id': id, 'network': network})
         session = context.session
         with session.begin(subtransactions=True):
             old_net = super(NECPluginV2, self).get_network(context, id)
@@ -349,7 +350,8 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base, l3_db.L3_NAT_db_mixin):
         or deactivate the port and packetfilters associated with it.
         """
         LOG.debug(_("NECPluginV2.update_port() called, "
-                    "id=%(id)s port=%(port)s ."), locals())
+                    "id=%(id)s port=%(port)s ."),
+                  {'id': id, 'port': port})
         old_port = super(NECPluginV2, self).get_port(context, id)
         new_port = super(NECPluginV2, self).update_port(context, id, port)
 
@@ -496,7 +498,7 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base, l3_db.L3_NAT_db_mixin):
         """
         LOG.debug(_("NECPluginV2.update_packet_filter() called, "
                     "id=%(id)s packet_filter=%(packet_filter)s ."),
-                  locals())
+                  {'id': id, 'packet_filter': packet_filter})
         old_pf = super(NECPluginV2, self).get_packet_filter(context, id)
         new_pf = super(NECPluginV2, self).update_packet_filter(context, id,
                                                                packet_filter)
