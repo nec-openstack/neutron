@@ -17,15 +17,10 @@
 # @author: Akihiro MOTOKI
 
 import re
+import uuid
 
 from quantum.plugins.nec.common import ofc_client
 from quantum.plugins.nec import ofc_driver_base
-
-
-HEX_ELEM = '[0-9A-Fa-f]'
-UUID_PATTERN = '-'.join([HEX_ELEM + '{8}', HEX_ELEM + '{4}',
-                         HEX_ELEM + '{4}', HEX_ELEM + '{4}',
-                         HEX_ELEM + '{12}'])
 
 
 class PFCDriverBase(ofc_driver_base.OFCDriverBase):
@@ -60,11 +55,14 @@ class PFCDriverBase(ofc_driver_base.OFCDriverBase):
           * delete UUID Version and hyphen (see RFC4122)
           * ensure str length
         """
-        if re.match(UUID_PATTERN, id_str):
-            uuid_no_version = id_str[:14] + id_str[15:]
-            uuid_no_hyphen = uuid_no_version.replace('-', '')
-            return uuid_no_hyphen[:31]
-        else:
+        try:
+            # openstack.common.uuidutils.is_uuid_like() returns
+            # False for KeyStone tenant_id, so uuid.UUID is used
+            # directly here to accept tenant_id as UUID string
+            uuid_str = str(uuid.UUID(id_str)).replace('-', '')
+            uuid_no_version = uuid_str[:12] + uuid_str[13:]
+            return uuid_no_version[:31]
+        except:
             return self._generate_pfc_str(id_str)[:31]
 
     def _generate_pfc_description(self, desc):

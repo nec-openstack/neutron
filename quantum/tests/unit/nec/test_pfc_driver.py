@@ -15,6 +15,9 @@
 #    under the License.
 # @author: Ryota MIBU
 
+import random
+import string
+
 import mox
 import unittest
 
@@ -203,3 +206,47 @@ class PFCV3DriverTest(PFCDriverTestBase, unittest.TestCase):
 
 class PFCV4DriverTest(PFCDriverTestBase, unittest.TestCase):
     driver = 'pfc_v4'
+
+class PFCDriverStringTest(unittest.TestCase):
+
+    driver = 'quantum.plugins.nec.drivers.pfc.PFCDriverBase'
+
+    def setUp(self):
+        self.driver = drivers.get_driver(self.driver)(TestConfig)
+
+    def tearDown(self):
+        pass
+
+    def test_generate_pfc_id_uuid(self):
+        id_str = uuidutils.generate_uuid()
+        exp_str = (id_str[:14] + id_str[15:]).replace('-', '')[:31]
+
+        ret_str = self.driver._generate_pfc_id(id_str)
+        self.assertEqual(exp_str, ret_str)
+
+    def test_generate_pfc_id_uuid_no_hyphen(self):
+        # Keystone tenant_id style uuid
+        id_str = uuidutils.generate_uuid()
+        id_no_hyphen = id_str.replace('-', '')
+        exp_str = (id_str[:14] + id_str[15:]).replace('-', '')[:31]
+
+        ret_str = self.driver._generate_pfc_id(id_no_hyphen)
+        self.assertEqual(exp_str, ret_str)
+
+    def test_generate_pfc_id_string(self):
+        id_str = uuidutils.generate_uuid() + 'x'
+        exp_str = id_str[:31].replace('-', '_')
+
+        ret_str = self.driver._generate_pfc_id(id_str)
+        self.assertEqual(exp_str, ret_str)
+
+    def test_generate_pfc_desc(self):
+        random_list = [random.choice(string.printable) for x in range(128)]
+        random_str = ''.join(random_list)
+
+        accept_letters = string.letters + string.digits
+        exp_list = [x if x in accept_letters else '_' for x in random_list]
+        exp_str = ''.join(exp_list)[:127]
+
+        ret_str = self.driver._generate_pfc_description(random_str)
+        self.assertEqual(exp_str, ret_str)
