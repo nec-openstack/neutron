@@ -19,7 +19,13 @@
 import re
 import uuid
 
+from keystoneclient.v2_0 import client as keystoneclient
+from keystoneclient import exceptions as keyexc
+
+from quantum.plugins.nec.common import config
 from quantum.plugins.nec.common import ofc_client
+from quantum.plugins.nec.db import api as ndb
+from quantum.plugins.nec.db import models as nmodels
 from quantum.plugins.nec import ofc_driver_base
 
 
@@ -38,6 +44,12 @@ class PFCDriverBase(ofc_driver_base.OFCDriverBase):
                                            use_ssl=conf_ofc.use_ssl,
                                            key_file=conf_ofc.key_file,
                                            cert_file=conf_ofc.cert_file)
+        self.keystoneclient = keystoneclient.Client(
+            username=config.CONF.keystone_authtoken.admin_user,
+            password=config.CONF.keystone_authtoken.admin_password,
+            tenant_name=config.CONF.keystone_authtoken.admin_tenant_name,
+            auth_url=config.CONF.keystone_authtoken.auth_url)
+
 
     @classmethod
     def filter_supported(cls):
@@ -62,7 +74,7 @@ class PFCDriverBase(ofc_driver_base.OFCDriverBase):
             uuid_str = str(uuid.UUID(id_str)).replace('-', '')
             uuid_no_version = uuid_str[:12] + uuid_str[13:]
             return uuid_no_version[:31]
-        except:
+        except keyexc.ClientException:
             return self._generate_pfc_str(id_str)[:31]
 
     def _generate_pfc_description(self, desc):
@@ -72,10 +84,21 @@ class PFCDriverBase(ofc_driver_base.OFCDriverBase):
         """
         return self._generate_pfc_str(desc)[:127]
 
+    def _get_tenant_name(self, tenant_id):
+        try:
+            name = self._generate_pfc_id(
+                self.keystoneclient.tenants.get(tenant_id).name)
+            # If a same name already exists, add UUID as suffix
+            if ndb.find_ofc_item(nmodels.OFCTenant, name):
+                name = self._generate_pfc_id(name + '_' + tenant_id)
+            return name
+        except:
+            return self._generate_pfc_id(tenant_id)
+
     def create_tenant(self, description, tenant_id=None):
-        ofc_tenant_id = self._generate_pfc_id(tenant_id)
+        ofc_tenant_id = self._get_tenant_name(tenant_id)
         body = {'id': ofc_tenant_id}
-        res = self.client.post('/tenants', body=body)
+        self.client.post('/tenants', body=body)
         return '/tenants/' + ofc_tenant_id
 
     def delete_tenant(self, ofc_tenant_id):
@@ -113,7 +136,7 @@ class PFCDriverBase(ofc_driver_base.OFCDriverBase):
 
 class PFCV3Driver(PFCDriverBase):
 
-    def create_tenant(self, description, tenant_id):
+    def create_tenant(self, description, tenant_id=None):
         ofc_tenant_id = self._generate_pfc_id(tenant_id)
         ofc_tenant_path = "/tenants/" + ofc_tenant_id
         return ofc_tenant_path
