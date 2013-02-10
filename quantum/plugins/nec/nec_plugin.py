@@ -16,6 +16,8 @@
 # @author: Ryota MIBU
 # @author: Akihiro MOTOKI
 
+import logging as std_logging
+
 from quantum.common import rpc as q_rpc
 from quantum.common import topics
 from quantum import context
@@ -72,6 +74,7 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base, l3_db.L3_NAT_db_mixin):
     binding_set = "extension:port_binding:set"
 
     def __init__(self):
+        config.CONF.log_opt_values(LOG, std_logging.DEBUG)
         ndb.initialize()
         self.ofc = ofc_manager.OFCManager()
 
