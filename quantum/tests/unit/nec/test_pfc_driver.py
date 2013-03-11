@@ -73,13 +73,15 @@ class PFCDriverTestBase():
         """OFC description consists of [A-Za-z0-9_]."""
         return desc.replace('-', '_').replace(' ', '_')
 
-    def _create_tenant(self, t, ofc_t, post_id=False):
+    def _create_tenant(self, t, ofc_t, post_id=False, post_desc=True):
         tenant_path = '/tenants/%s' % ofc_t
         description = "desc of %s" % t
         ofc_description = self.get_ofc_description(description)
 
         path = "/tenants"
-        body = {'description': ofc_description}
+        body = {}
+        if post_desc:
+            body['description'] = ofc_description
         if post_id:
             body['id'] = ofc_t
             ofc.OFCClient.do_request("POST", path, body=body)
@@ -201,4 +203,6 @@ class PFCV4DriverTest(PFCDriverTestBase, unittest.TestCase):
     def testa_create_tenant(self):
         t, n, p = self.get_ofc_item_random_params()
         ofc_t = self._generate_ofc_tenant_id(t)
-        self._create_tenant(t, ofc_t, post_id=True)
+        # Drop hyphens to emulate keystone tenant_id
+        ofc_t = ofc_t.replace('-', '')
+        self._create_tenant(t, ofc_t, post_id=True, post_desc=False)
