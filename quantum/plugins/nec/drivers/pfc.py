@@ -19,6 +19,8 @@
 import re
 import uuid
 
+import netaddr
+
 from quantum.plugins.nec.common import ofc_client
 from quantum.plugins.nec.db import api as ndb
 from quantum.plugins.nec import ofc_driver_base
@@ -42,6 +44,10 @@ class PFCDriverBase(ofc_driver_base.OFCDriverBase):
 
     @classmethod
     def filter_supported(cls):
+        return False
+
+    @classmethod
+    def router_supported(cls):
         return False
 
     def _generate_pfc_str(self, raw_str):
@@ -136,6 +142,65 @@ class PFCDriverBase(ofc_driver_base.OFCDriverBase):
         return '%(network)s/ports/%(port)s' % params
 
 
+class PFCRouterDriverMixin(object):
+    """PFC Router Driver Mixin"""
+
+    @classmethod
+    def router_supported(cls):
+        return True
+
+    def create_router(self, ofc_tenant_id, description, router_id):
+        path = '%s/routers' % ofc_tenant_id
+        res = self.client.post(path, body=None)
+        ofc_router_id = res['id']
+        return path + '/' + ofc_router_id
+
+    def delete_router(self, ofc_router_id):
+        return self.client.delete(ofc_router_id)
+
+    def add_router_interface(self, ofc_router_id, network_id,
+                             ip_address=None, mac_address=None):
+        # ip_address : <ip_address>/<netmask> (e.g., 10.0.0.0/24)
+        path = '%s/interfaces' % ofc_router_id
+        body = {'net_id', network_id}
+        if ip_address:
+            body['ip_address'] = ip_address
+        if mac_address:
+            body['mac_address'] = mac_address
+        res = self.client.post(path, body=body)
+        return path + '/' + res['id']
+
+    def update_router_interface(self, ofc_router_inf_id,
+                                ip_address=None, mac_address=None):
+        # ip_address : <ip_address>/<netmask> (e.g., 10.0.0.0/24)
+        if not ip_address and not mac_address:
+            return
+        body = {}
+        if ip_address:
+            body['ip_address'] = ip_address
+        if mac_address:
+            body['mac_address'] = mac_address
+        return self.client.put(path, body=body)
+
+    def delete_router_interface(self, ofc_router_inf_id):
+        return self.client.delete(ofc_router_inf_id)
+
+    def list_router_routes(self, ofc_router_id):
+        path = '%s/routes' % ofc_router_id
+        ret = self.client.get(path)
+        return ret['routes']
+
+    def add_router_route(self, ofc_router_id, destination, nexthop):
+        path = '%s/routes' % ofc_router_id
+        body = {'destination': destination,
+                'nexthop': nexthop}
+        ret = self.client.post(path, body=body)
+        return path + '/' + ret['id']
+
+    def delete_router_route(self, ofc_router_route_id):
+        return self.client.delete(ofc_router_route_id)
+
+
 class PFCV3Driver(PFCDriverBase):
 
     def create_tenant(self, description, tenant_id):
@@ -147,4 +212,8 @@ class PFCV3Driver(PFCDriverBase):
 
 
 class PFCV4Driver(PFCDriverBase):
+    pass
+
+
+class PFCV5Driver(PFCRouterDriverMixin, PFCDriverBase):
     pass

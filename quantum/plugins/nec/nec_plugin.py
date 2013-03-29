@@ -27,7 +27,6 @@ from quantum import context
 from quantum.db import agents_db
 from quantum.db import agentschedulers_db
 from quantum.db import dhcp_rpc_base
-from quantum.db import extraroute_db
 from quantum.db import l3_rpc_base
 #NOTE(amotoki): quota_db cannot be removed, it is for db model
 from quantum.db import quota_db
@@ -43,6 +42,7 @@ from quantum.plugins.nec.common import exceptions as nexc
 from quantum.plugins.nec.db import api as ndb
 from quantum.plugins.nec.db import nec_plugin_base
 from quantum.plugins.nec import ofc_manager
+from quantum.plugins.nec import nec_router
 from quantum import policy
 
 LOG = logging.getLogger(__name__)
@@ -64,7 +64,7 @@ class OperationalStatus:
 
 
 class NECPluginV2(nec_plugin_base.NECPluginV2Base,
-                  extraroute_db.ExtraRoute_db_mixin,
+                  nec_router.NecRouterMixin,
                   sg_db_rpc.SecurityGroupServerRpcMixin,
                   agentschedulers_db.AgentSchedulerDbMixin):
     """NECPluginV2 controls an OpenFlow Controller.
