@@ -37,6 +37,7 @@ OFP_VLAN_NONE = 0xffff
 resource_map = {'ofc_tenant': nmodels.OFCTenantMapping,
                 'ofc_network': nmodels.OFCNetworkMapping,
                 'ofc_port': nmodels.OFCPortMapping,
+                'ofc_router': nmodels.OFCRouterMapping,
                 'ofc_packet_filter': nmodels.OFCFilterMapping}
 
 old_resource_map = {'ofc_tenant': nmodels.OFCTenant,
