@@ -50,6 +50,10 @@ class OFCManager(object):
     def _del_ofc_item(self, context, resource, quantum_id):
         ndb.del_ofc_item_lookup_both(context.session, resource, quantum_id)
 
+    def ensure_ofc_tenant(self, context, tenant_id):
+        if not self.ofc.exists_ofc_tenant(context, tenant_id):
+            self.ofc.create_ofc_tenant(context, tenant_id)
+
     def create_ofc_tenant(self, context, tenant_id):
         desc = "ID=%s at OpenStack." % tenant_id
         ofc_tenant_id = self.driver.create_tenant(desc, tenant_id)
@@ -134,3 +138,34 @@ class OFCManager(object):
 
         res = self.driver.delete_filter(ofc_pf_id)
         self._del_ofc_item(context, "ofc_packet_filter", filter_id)
+
+    def create_ofc_router(self, context, tenant_id, router_id, name=None):
+        ofc_tenant_id = self._get_ofc_id(context, "ofc_tenant", tenant_id)
+        ofc_tenant_id = self.driver.convert_ofc_tenant_id(
+            context, ofc_tenant_id)
+
+        desc = "ID=%s Name=%s at Quantum." % (router_id, name)
+        ofc_router_id = self.driver.create_router(ofc_tenant_id, desc,
+                                                  router_id)
+        self._add_ofc_item(context, "ofc_router", router_id, ofc_router_id)
+
+    def exists_ofc_router(self, context, router_id):
+        return self._exists_ofc_item(context, "ofc_router", router_id)
+
+    def delete_ofc_router(self, context, router_id, router):
+        ofc_router_id = self._get_ofc_id(context, "ofc_router", router_id)
+        self.driver.delete_router(ofc_router_id)
+        self._del_ofc_item(context, "ofc_router", router_id)
+
+    def add_ofc_router_interface(self, context, router_id, port):
+        ofc_router_id = self._get_ofc_id(context, "ofc_router", router_id)
+        network_id = port['network_id']
+        ip_address = port['fixed_ips'][0]['ip_address']
+        mac_address = port['mac_address']
+        ofc_inf_id = self.driver.add_router_interface(
+            ofc_router_id, network_id, ip_address, mac_address)
+        # Use port mapping table to maintain an interface of OFC router
+        # XXX
+        self._add_ofc_item(context, "ofc_port", port['id'], ofc_inf_id)
+
+    def delete_ofc_router_interface(self, context, router_id, port):

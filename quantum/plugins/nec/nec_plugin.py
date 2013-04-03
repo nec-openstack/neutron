@@ -148,6 +148,20 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
         obj_updater = getattr(super(NECPluginV2, self), "update_%s" % resource)
         obj_updater(context, id, request)
 
+    def _check_tenant_not_in_use(self, context, tenant_id):
+        """Return True if the specified tenant is not used."""
+        filters = dict(tenant_id=[tenant_id])
+        nets = super(NECPluginV2, self).get_networks(context, filters=filters)
+        return not nets
+
+    def _cleanup_ofc_tenant(self, context, tenant_id):
+        if self._check_tenant_not_in_use(context, tenant_id):
+            try:
+                self.ofc.delete_ofc_tenant(context, tenant_id)
+            except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
+                reason = _("delete_ofc_tenant() failed due to %s") % exc
+                LOG.warn(reason)
+
     def activate_port_if_ready(self, context, port, network=None):
         """Activate port by creating port on OFC if ready.
 
@@ -253,8 +267,7 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
                                          OperationalStatus.BUILD)
 
         try:
-            if not self.ofc.exists_ofc_tenant(context, new_net['tenant_id']):
-                self.ofc.create_ofc_tenant(context, new_net['tenant_id'])
+            self.ofc.ensure_ofc_tenant(context, new_net['tenant_id'])
             self.ofc.create_ofc_network(context, new_net['tenant_id'],
                                         new_net['id'], new_net['name'])
         except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
@@ -337,7 +350,6 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
 
         super(NECPluginV2, self).delete_network(context, id)
         try:
-            # 'net' parameter is required to lookup old OFC mapping
             self.ofc.delete_ofc_network(context, id, net)
         except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
             reason = _("delete_network() failed due to %s") % exc
@@ -351,15 +363,7 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
             for pf in pfs:
                 self.delete_packet_filter(context, pf['id'])
 
-        # delete unnessary ofc_tenant
-        filters = dict(tenant_id=[tenant_id])
-        nets = super(NECPluginV2, self).get_networks(context, filters=filters)
-        if not nets:
-            try:
-                self.ofc.delete_ofc_tenant(context, tenant_id)
-            except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
-                reason = _("delete_ofc_tenant() failed due to %s") % exc
-                LOG.warn(reason)
+        self._cleanup_ofc_tenant(context, tenant_id)
 
     def get_network(self, context, id, fields=None):
         net = super(NECPluginV2, self).get_network(context, id, None)
