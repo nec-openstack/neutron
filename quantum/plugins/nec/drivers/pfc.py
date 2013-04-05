@@ -15,6 +15,9 @@
 #    under the License.
 # @author: Ryota MIBU
 
+import re
+import uuid
+
 from quantum.plugins.nec.common import ofc_client
 from quantum.plugins.nec import ofc_driver_base
 
@@ -40,8 +43,24 @@ class PFCDriver(ofc_driver_base.OFCDriverBase):
     def filter_supported(cls):
         return False
 
+    def _generate_pfc_str(self, raw_str):
+        return re.sub(r'[^0-9a-zA-Z]', '_', raw_str)
+
+    def _generate_pfc_id(self, id_str):
+        try:
+            # Need to use uuid.UUID to accept Keystone tenant_id as UUID
+            uuid_str = str(uuid.UUID(id_str)).replace('-', '')
+            # Drop version field in UUID version 4
+            uuid_no_version = uuid_str[:12] + uuid_str[13:]
+            return uuid_no_version[:31]
+        except:
+            return self._generate_pfc_str(id_str)[:31]
+
+    def _generate_pfc_description(self, desc):
+        return self._generate_pfc_str(desc)[:127]
+
     def create_tenant(self, description, tenant_id):
-        ofc_tenant_id = tenant_id
+        ofc_tenant_id = self._generate_pfc_id(tenant_id)
         body = {'id': ofc_tenant_id}
         res = self.client.post(TENANTS_PATH, body=body)
         return ofc_tenant_id
@@ -51,16 +70,16 @@ class PFCDriver(ofc_driver_base.OFCDriverBase):
         return self.client.delete(path)
 
     def create_network(self, ofc_tenant_id, description, network_id):
+        ofc_network_id = self._generate_pfc_id(network_id)
         path = NETWORKS_PATH % ofc_tenant_id
-        ofc_network_id = network_id
-        body = {'description': description,
+        body = {'description': self._generate_pfc_description(description),
                 'id': ofc_network_id}
         res = self.client.post(path, body=body)
         return ofc_network_id
 
     def update_network(self, ofc_tenant_id, ofc_network_id, description):
         path = NETWORK_PATH % (ofc_tenant_id, ofc_network_id)
-        body = {'description': description}
+        body = {'description': self._generate_pfc_description(description)}
         return self.client.put(path, body=body)
 
     def delete_network(self, ofc_tenant_id, ofc_network_id):
@@ -70,7 +89,7 @@ class PFCDriver(ofc_driver_base.OFCDriverBase):
     def create_port(self, ofc_tenant_id, ofc_network_id, portinfo,
                     port_id):
         path = PORTS_PATH % (ofc_tenant_id, ofc_network_id)
-        ofc_port_id = port_id
+        ofc_port_id = self._generate_pfc_id(port_id)
         body = {'datapath_id': portinfo.datapath_id,
                 'port': str(portinfo.port_no),
                 'vid': str(portinfo.vlan_id),
