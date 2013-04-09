@@ -16,9 +16,16 @@
 #
 # @author: Akihiro MOTOKI
 
+from quantum.common import exceptions as qexception
+from quantum.common import utils
 from quantum.db import extraroute_db
 from quantum.db import l3_db
 from quantum.extensions import l3
+
+
+class RouterExternalGatewayNotSupported(qexception.BadRequest):
+    message = _("Router (flavor=vrouter) does not support an external network")
+
 
 class NecRouterMixin(extraroute_db.ExtraRoute_db_mixin):
 
@@ -31,6 +38,8 @@ class NecRouterMixin(extraroute_db.ExtraRoute_db_mixin):
         # NOTE: Needs to set up default security groups for a tenant here?
         # At the moment the default security group needs to be created
         # when the first network is created for the tenant.
+
+        self._check_external_gateway_info(router['router'])
 
         # create router in DB
         # TODO(amotoki)
@@ -60,7 +69,19 @@ class NecRouterMixin(extraroute_db.ExtraRoute_db_mixin):
         LOG.debug(_("NECPluginV2.update_router() called, "
                     "id=%(id)s, router=%(router)s ."),
                   dict(id=router_id, router=router))
-        pass
+
+        r = router['router']
+        self._check_external_gateway_info(r)
+
+        with context.session.begin(subtransactions=True):
+            #check if route exists and have permission to access
+            old_router = super(NecRouterMixin, self).get_router(
+                context, router_id)
+            new_router = super(NecRouterMixin, self).update_router(
+                context, router_id, router)
+            self._update_ofc_routes(context, old_router['routes'],
+                                    new_router['routes'])
+        return new_router
 
     def delete_router(self, context, router_id):
         LOG.debug(_("NECPluginV2.delete_router() called, id=%s."), router_id)
@@ -88,17 +109,53 @@ class NecRouterMixin(extraroute_db.ExtraRoute_db_mixin):
         # NOTE: policy check is done in super().add_router_interface()
         new_interface = super(NecRouterMixin, self).add_router_interface(
             context, router_id, interface_info)
-        port = self._get_port(context, new_interface['port_id'])
-        # XXX: try/except
-        self.ofc.add_router_interface(context, router_id, port)
+        port_id = new_interface['port_id']
+        port = self._get_port(context, port_id)
+        try:
+            self.ofc.add_router_interface(context, router_id, port_id, port)
+        except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
+            reason = _("add_router_interface() failed due to %s") % exc
+            LOG.error(reason)
+            self._update_resource_status(context, "port", port_id,
+                                         OperationalStatus.ERROR)
+        else:
+            self._update_resource_status(context, "port", port_id,
+                                         OperationalStatus.ACTIVE)
         return new_interface
 
     def remove_router_interface(self, context, router_id, interface_info):
         LOG.debug(_("NECPluginV2.remove_router_interface() called, "
                     "id=%(id)s, interface=%(interface)s."),
                   dict(id=router_id, interface=interface_info))
-        super(NecRouterMixin, self).remove_router_interface(context, router_id,
-                                                         interface_info)
+
+        # make sure router exists
+        router = self._get_router(context, router_id)
+        try:
+            policy.enforce(context,
+                           "extension:router:remove_router_interface",
+                           self._make_router_dict(router))
+        except q_exc.PolicyNotAuthorized:
+            raise l3.RouterNotFound(router_id=router_id)
+
+        port_info = self._get_router_interface_port(context, router_id,
+                                                    interface_info)
+        port_id = port_info['id']
+        self._confirm_router_interface_not_in_use(
+            context, router_id, port_info['subnet_id'])
+
+        try:
+            self.ofc.delete_router_interface(context, router_id, port_id,
+                                             port_info)
+            super(NecRouterMixin, self).delete_port(context, port_info['id'],
+                                                    l3_port_check=False)
+        except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
+            reason = _("delete_router_interface() failed due to %s") % exc
+            LOG.error(reason)
+            self._update_resource_status(context, "port", port_id,
+                                         OperationalStatus.ERROR)
+            # XXX(amotoki): Should coordinate an exception type
+            # Internal Server Error will be returned now.
+            raise
 
     def _check_router_in_use(self, context, router_id):
         # Ensure that the router is not used
@@ -114,6 +171,31 @@ class NecRouterMixin(extraroute_db.ExtraRoute_db_mixin):
                                      filters=device_filter)
         if ports:
             raise l3.RouterInUse(router_id=id)
+
+    def _check_external_gateway_info(self, router):
+        """Check if external network is specified.
+
+        vRouter router does not support the external network. If the external
+        network is specified this method raises an exception."""
+
+        if 'external_gateway_info' in router:
+            gw_info = router['external_gateway_info']
+            network_id = gw_info.get('network_id') if gw_info else None
+            if network_id:
+                raise RouterExternalGatewayNotSupported()
+
+    def _update_ofc_routes(context, old_routes, new_routes):
+        added, removed = utils.diff_list_of_dict(old_routes, new_routes)
+        # NOTE(amotoki): route-update is supported by PFC.
+        # Thus we need to remove an old route and then add a new route.
+        for route in removed:
+            LOG.debug(_("Removed OFC route entry is '%s'"), route)
+            self.ofc.delete_ofc_router_interface(context, router_id,
+                                                 port_id, port)
+        for route in added:
+            LOG.debug(_("Added OFC route entry is '%s'"), route)
+            self.ofc.add_ofc_router_interface(context, router_id,
+                                              port_id, port)
 
     def _check_tenant_not_in_use(self, context, tenant_id):
         """Return True if the specified tenant is not used."""

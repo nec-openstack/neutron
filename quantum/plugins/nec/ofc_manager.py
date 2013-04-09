@@ -157,7 +157,7 @@ class OFCManager(object):
         self.driver.delete_router(ofc_router_id)
         self._del_ofc_item(context, "ofc_router", router_id)
 
-    def add_ofc_router_interface(self, context, router_id, port):
+    def add_ofc_router_interface(self, context, router_id, port_id, port):
         ofc_router_id = self._get_ofc_id(context, "ofc_router", router_id)
         network_id = port['network_id']
         ip_address = port['fixed_ips'][0]['ip_address']
@@ -165,7 +165,19 @@ class OFCManager(object):
         ofc_inf_id = self.driver.add_router_interface(
             ofc_router_id, network_id, ip_address, mac_address)
         # Use port mapping table to maintain an interface of OFC router
-        # XXX
-        self._add_ofc_item(context, "ofc_port", port['id'], ofc_inf_id)
+        self._add_ofc_item(context, "ofc_port", port_id, ofc_inf_id)
 
-    def delete_ofc_router_interface(self, context, router_id, port):
+    def delete_ofc_router_interface(self, context, router_id, port_id, port):
+        ofc_inf_id = self._get_ofc_id(context, "ofc_port", port_id)
+        self.driver.delete_router_interface(ofc_inf_id)
+        # Use port mapping table to maintain an interface of OFC router
+        self._del_ofc_item(context, "ofc_port", port_id)
+
+    def add_ofc_router_route(self, context, router_id, xxxx):
+        ofc_router_id = self._get_ofc_id(context, "ofc_router", router_id)
+        ofc_router_route_id = self.driver.add_router_route(
+            ofc_router_id, destination, nexthop)
+
+    def delete_ofc_router_route(self, context, router_id, xxxx):
+        ofc_router_id = self._get_ofc_id(context, "ofc_router", router_id)
+        self.driver.delete_router_route(ofc_router_route_id)
