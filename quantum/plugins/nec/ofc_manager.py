@@ -51,8 +51,8 @@ class OFCManager(object):
         ndb.del_ofc_item_lookup_both(context.session, resource, quantum_id)
 
     def ensure_ofc_tenant(self, context, tenant_id):
-        if not self.ofc.exists_ofc_tenant(context, tenant_id):
-            self.ofc.create_ofc_tenant(context, tenant_id)
+        if not self.exists_ofc_tenant(context, tenant_id):
+            self.create_ofc_tenant(context, tenant_id)
 
     def create_ofc_tenant(self, context, tenant_id):
         desc = "ID=%s at OpenStack." % tenant_id
@@ -173,11 +173,22 @@ class OFCManager(object):
         # Use port mapping table to maintain an interface of OFC router
         self._del_ofc_item(context, "ofc_port", port_id)
 
-    def add_ofc_router_route(self, context, router_id, xxxx):
+    def update_ofc_router_route(self, context, router_id,
+                                added_routes, removed_routes):
         ofc_router_id = self._get_ofc_id(context, "ofc_router", router_id)
-        ofc_router_route_id = self.driver.add_router_route(
-            ofc_router_id, destination, nexthop)
-
-    def delete_ofc_router_route(self, context, router_id, xxxx):
-        ofc_router_id = self._get_ofc_id(context, "ofc_router", router_id)
-        self.driver.delete_router_route(ofc_router_route_id)
+        if removed_routes:
+            ofc_routes = self.driver.list_router_route(context, ofc_router_id)
+            route_dict = dict((','.join((r['destination'], r['nexthop'])),
+                               r['id']) for r in ofc_routes)
+        for r in removed_routes:
+            key = ','.join((r['destination'], r['nexthop']))
+            if key not in route_dict:
+                LOG.warning('router route not found (router=%(id)s, '
+                            '%(dest)s, %(nexthop)si)',
+                            dict(id=router_id, destination=r['destination'],
+                                 nexthop=r['nexthop']))
+            route_id = route_dict[key]
+            self.driver.delete_router_route(route_id)
+        for r in added_routes:
+            self.driver.add_router_route(ofc_router_id, r['destination'],
+                                         r['nexthop'])

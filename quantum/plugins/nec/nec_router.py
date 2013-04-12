@@ -21,6 +21,10 @@ from quantum.common import utils
 from quantum.db import extraroute_db
 from quantum.db import l3_db
 from quantum.extensions import l3
+from quantum.openstack.common import log as logging
+from quantum.plugins.nec.common import status
+
+LOG = logging.getLogger(__name__)
 
 
 class RouterExternalGatewayNotSupported(qexception.BadRequest):
@@ -48,7 +52,7 @@ class NecRouterMixin(extraroute_db.ExtraRoute_db_mixin):
             new_router = super(NecRouterMixin, self).create_router(context,
                                                                    router)
             self._update_resource_status(context, "router", new_router['id'],
-                                         OperationalStatus.BUILD)
+                                         status.OperationalStatus.BUILD)
 
         # create router on the network controller
         try:
@@ -59,10 +63,10 @@ class NecRouterMixin(extraroute_db.ExtraRoute_db_mixin):
             reason = _("create_router() failed due to %s") % exc
             LOG.error(reason)
             self._update_resource_status(context, "router", new_net['id'],
-                                         OperationalStatus.ERROR)
+                                         status.OperationalStatus.ERROR)
         else:
             self._update_resource_status(context, "router", new_net['id'],
-                                         OperationalStatus.ACTIVE)
+                                         status.OperationalStatus.ACTIVE)
         return new_router
 
     def update_router(self, context, router_id, router):
@@ -86,7 +90,7 @@ class NecRouterMixin(extraroute_db.ExtraRoute_db_mixin):
     def delete_router(self, context, router_id):
         LOG.debug(_("NECPluginV2.delete_router() called, id=%s."), router_id)
 
-        router = super(NecRouterMixin, self).get_router(context, router_id):
+        router = super(NecRouterMixin, self).get_router(context, router_id)
         tenant_id = router['tenant_id']
         # Needs to be wrapped with a session
         self._check_router_in_use(context, router_id)
@@ -117,10 +121,10 @@ class NecRouterMixin(extraroute_db.ExtraRoute_db_mixin):
             reason = _("add_router_interface() failed due to %s") % exc
             LOG.error(reason)
             self._update_resource_status(context, "port", port_id,
-                                         OperationalStatus.ERROR)
+                                         status.OperationalStatus.ERROR)
         else:
             self._update_resource_status(context, "port", port_id,
-                                         OperationalStatus.ACTIVE)
+                                         status.OperationalStatus.ACTIVE)
         return new_interface
 
     def remove_router_interface(self, context, router_id, interface_info):
@@ -152,7 +156,7 @@ class NecRouterMixin(extraroute_db.ExtraRoute_db_mixin):
             reason = _("delete_router_interface() failed due to %s") % exc
             LOG.error(reason)
             self._update_resource_status(context, "port", port_id,
-                                         OperationalStatus.ERROR)
+                                         status.OperationalStatus.ERROR)
             # XXX(amotoki): Should coordinate an exception type
             # Internal Server Error will be returned now.
             raise
@@ -186,16 +190,12 @@ class NecRouterMixin(extraroute_db.ExtraRoute_db_mixin):
 
     def _update_ofc_routes(context, old_routes, new_routes):
         added, removed = utils.diff_list_of_dict(old_routes, new_routes)
-        # NOTE(amotoki): route-update is supported by PFC.
-        # Thus we need to remove an old route and then add a new route.
-        for route in removed:
-            LOG.debug(_("Removed OFC route entry is '%s'"), route)
-            self.ofc.delete_ofc_router_interface(context, router_id,
-                                                 port_id, port)
-        for route in added:
-            LOG.debug(_("Added OFC route entry is '%s'"), route)
-            self.ofc.add_ofc_router_interface(context, router_id,
-                                              port_id, port)
+        # NOTE(amotoki): route-update should be supported by PFC.
+        # At the moment we need to remove an old route and then
+        # add a new route. It may leads to no route for some destination
+        # during route update.
+        self.ofc.update_ofc_router_route(context, router_id,
+                                         added, removed)
 
     def _check_tenant_not_in_use(self, context, tenant_id):
         """Return True if the specified tenant is not used."""

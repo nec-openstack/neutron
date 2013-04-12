@@ -39,6 +39,7 @@ from quantum.openstack.common import rpc
 from quantum.openstack.common.rpc import proxy
 from quantum.plugins.nec.common import config
 from quantum.plugins.nec.common import exceptions as nexc
+from quantum.plugins.nec.common import status
 from quantum.plugins.nec.db import api as ndb
 from quantum.plugins.nec.db import nec_plugin_base
 from quantum.plugins.nec import ofc_manager
@@ -46,21 +47,6 @@ from quantum.plugins.nec import nec_router
 from quantum import policy
 
 LOG = logging.getLogger(__name__)
-
-
-class OperationalStatus:
-    """Enumeration for operational status.
-
-       ACTIVE: The resource is available.
-       DOWN: The resource is not operational.  This might indicate
-             admin_state_up=False, or lack of OpenFlow info for the port.
-       BUILD: The plugin is creating the resource.
-       ERROR: Some error occured.
-    """
-    ACTIVE = "ACTIVE"
-    DOWN = "DOWN"
-    BUILD = "BUILD"
-    ERROR = "ERROR"
 
 
 class NECPluginV2(nec_plugin_base.NECPluginV2Base,
@@ -155,6 +141,7 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
         return not nets
 
     def _cleanup_ofc_tenant(self, context, tenant_id):
+
         if self._check_tenant_not_in_use(context, tenant_id):
             try:
                 self.ofc.delete_ofc_tenant(context, tenant_id)
@@ -175,25 +162,25 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
             network = super(NECPluginV2, self).get_network(context,
                                                            port['network_id'])
 
-        port_status = OperationalStatus.ACTIVE
+        port_status = status.OperationalStatus.ACTIVE
         if not port['admin_state_up']:
             LOG.debug(_("activate_port_if_ready(): skip, "
                         "port.admin_state_up is False."))
-            port_status = OperationalStatus.DOWN
+            port_status = status.OperationalStatus.DOWN
         elif not network['admin_state_up']:
             LOG.debug(_("activate_port_if_ready(): skip, "
                         "network.admin_state_up is False."))
-            port_status = OperationalStatus.DOWN
+            port_status = status.OperationalStatus.DOWN
         elif not ndb.get_portinfo(context.session, port['id']):
             LOG.debug(_("activate_port_if_ready(): skip, "
                         "no portinfo for this port."))
-            port_status = OperationalStatus.DOWN
+            port_status = status.OperationalStatus.DOWN
 
         # activate packet_filters before creating port on OFC.
         if self.packet_filter_enabled:
-            if port_status is OperationalStatus.ACTIVE:
+            if port_status is status.OperationalStatus.ACTIVE:
                 filters = dict(in_port=[port['id']],
-                               status=[OperationalStatus.DOWN],
+                               status=[status.OperationalStatus.DOWN],
                                admin_state_up=[True])
                 pfs = (super(NECPluginV2, self).
                        get_packet_filters(context, filters=filters))
@@ -202,7 +189,7 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
                                                           network=network,
                                                           in_port=port)
 
-        if port_status in [OperationalStatus.ACTIVE]:
+        if port_status in [status.OperationalStatus.ACTIVE]:
             if self.ofc.exists_ofc_port(context, port['id']):
                 LOG.debug(_("activate_port_if_ready(): skip, "
                             "ofc_port already exists."))
@@ -212,7 +199,7 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
                 except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
                     reason = _("create_ofc_port() failed due to %s") % exc
                     LOG.error(reason)
-                    port_status = OperationalStatus.ERROR
+                    port_status = status.OperationalStatus.ERROR
 
         if port_status is not port['status']:
             self._update_resource_status(context, "port", port['id'],
@@ -223,14 +210,14 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
 
         Deactivate port and packet_filters associated with the port.
         """
-        port_status = OperationalStatus.DOWN
+        port_status = status.OperationalStatus.DOWN
         if self.ofc.exists_ofc_port(context, port['id']):
             try:
                 self.ofc.delete_ofc_port(context, port['id'], port)
             except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
                 reason = _("delete_ofc_port() failed due to %s") % exc
                 LOG.error(reason)
-                port_status = OperationalStatus.ERROR
+                port_status = status.OperationalStatus.ERROR
         else:
             LOG.debug(_("deactivate_port(): skip, ofc_port does not "
                         "exist."))
@@ -242,7 +229,7 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
         # deactivate packet_filters after the port has deleted from OFC.
         if self.packet_filter_enabled:
             filters = dict(in_port=[port['id']],
-                           status=[OperationalStatus.ACTIVE])
+                           status=[status.OperationalStatus.ACTIVE])
             pfs = super(NECPluginV2, self).get_packet_filters(context,
                                                               filters=filters)
             for pf in pfs:
@@ -264,7 +251,7 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
             self._process_l3_create(context, network['network'], new_net['id'])
             self._extend_network_dict_l3(context, new_net)
             self._update_resource_status(context, "network", new_net['id'],
-                                         OperationalStatus.BUILD)
+                                         status.OperationalStatus.BUILD)
 
         try:
             self.ofc.ensure_ofc_tenant(context, new_net['tenant_id'])
@@ -274,10 +261,10 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
             reason = _("create_network() failed due to %s") % exc
             LOG.error(reason)
             self._update_resource_status(context, "network", new_net['id'],
-                                         OperationalStatus.ERROR)
+                                         status.OperationalStatus.ERROR)
         else:
             self._update_resource_status(context, "network", new_net['id'],
-                                         OperationalStatus.ACTIVE)
+                                         status.OperationalStatus.ACTIVE)
 
         return new_net
 
@@ -301,9 +288,10 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
         changed = (old_net['admin_state_up'] is not new_net['admin_state_up'])
         if changed and not new_net['admin_state_up']:
             self._update_resource_status(context, "network", id,
-                                         OperationalStatus.DOWN)
+                                         status.OperationalStatus.DOWN)
             # disable all active ports and packet_filters of the network
-            filters = dict(network_id=[id], status=[OperationalStatus.ACTIVE])
+            filters = dict(network_id=[id],
+                           status=[status.OperationalStatus.ACTIVE])
             ports = super(NECPluginV2, self).get_ports(context,
                                                        filters=filters)
             for port in ports:
@@ -315,9 +303,10 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
                     self._deactivate_packet_filter(context, pf)
         elif changed and new_net['admin_state_up']:
             self._update_resource_status(context, "network", id,
-                                         OperationalStatus.ACTIVE)
+                                         status.OperationalStatus.ACTIVE)
             # enable ports and packet_filters of the network
-            filters = dict(network_id=[id], status=[OperationalStatus.DOWN],
+            filters = dict(network_id=[id],
+                           status=[status.OperationalStatus.DOWN],
                            admin_state_up=[True])
             ports = super(NECPluginV2, self).get_ports(context,
                                                        filters=filters)
@@ -396,7 +385,7 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
             self._extend_port_dict_security_group(context, port)
         self.notify_security_groups_member_updated(context, port)
         self._update_resource_status(context, "port", port['id'],
-                                     OperationalStatus.BUILD)
+                                     status.OperationalStatus.BUILD)
         self.activate_port_if_ready(context, port)
         return self._extend_port_dict_binding(context, port)
 
@@ -496,25 +485,25 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
         if in_port_id and not in_port:
             in_port = super(NECPluginV2, self).get_port(context, in_port_id)
 
-        pf_status = OperationalStatus.ACTIVE
+        pf_status = status.OperationalStatus.ACTIVE
         if not packet_filter['admin_state_up']:
             LOG.debug(_("_activate_packet_filter_if_ready(): skip, "
                         "packet_filter.admin_state_up is False."))
-            pf_status = OperationalStatus.DOWN
+            pf_status = status.OperationalStatus.DOWN
         elif not network['admin_state_up']:
             LOG.debug(_("_activate_packet_filter_if_ready(): skip, "
                         "network.admin_state_up is False."))
-            pf_status = OperationalStatus.DOWN
+            pf_status = status.OperationalStatus.DOWN
         elif in_port_id and in_port_id is in_port.get('id'):
             LOG.debug(_("_activate_packet_filter_if_ready(): skip, "
                         "invalid in_port_id."))
-            pf_status = OperationalStatus.DOWN
+            pf_status = status.OperationalStatus.DOWN
         elif in_port_id and not ndb.get_portinfo(context.session, in_port_id):
             LOG.debug(_("_activate_packet_filter_if_ready(): skip, "
                         "no portinfo for in_port."))
-            pf_status = OperationalStatus.DOWN
+            pf_status = status.OperationalStatus.DOWN
 
-        if pf_status in [OperationalStatus.ACTIVE]:
+        if pf_status in [status.OperationalStatus.ACTIVE]:
             if self.ofc.exists_ofc_packet_filter(context, packet_filter['id']):
                 LOG.debug(_("_activate_packet_filter_if_ready(): skip, "
                             "ofc_packet_filter already exists."))
@@ -528,7 +517,7 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
                     reason = _("create_ofc_packet_filter() failed due to "
                                "%s") % exc
                     LOG.error(reason)
-                    pf_status = OperationalStatus.ERROR
+                    pf_status = status.OperationalStatus.ERROR
 
         if pf_status is not packet_filter['status']:
             self._update_resource_status(context, "packet_filter",
@@ -536,7 +525,7 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
 
     def _deactivate_packet_filter(self, context, packet_filter):
         """Deactivate packet_filter by deleting filter from OFC if exixts."""
-        pf_status = OperationalStatus.DOWN
+        pf_status = status.OperationalStatus.DOWN
         if not self.ofc.exists_ofc_packet_filter(context, packet_filter['id']):
             LOG.debug(_("_deactivate_packet_filter(): skip, "
                         "ofc_packet_filter does not exist."))
@@ -547,7 +536,7 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
                 reason = _("delete_ofc_packet_filter() failed due to "
                            "%s") % exc
                 LOG.error(reason)
-                pf_status = OperationalStatus.ERROR
+                pf_status = status.OperationalStatus.ERROR
 
         if pf_status is not packet_filter['status']:
             self._update_resource_status(context, "packet_filter",
@@ -560,7 +549,7 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
         new_pf = super(NECPluginV2, self).create_packet_filter(context,
                                                                packet_filter)
         self._update_resource_status(context, "packet_filter", new_pf['id'],
-                                     OperationalStatus.BUILD)
+                                     status.OperationalStatus.BUILD)
 
         self._activate_packet_filter_if_ready(context, new_pf)
 
