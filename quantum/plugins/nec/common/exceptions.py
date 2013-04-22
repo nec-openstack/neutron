@@ -37,3 +37,7 @@ class PortInfoNotFound(qexc.NotFound):
 
 class PacketFilterNotFound(qexc.NotFound):
     message = _("PacketFilter %(id)s could not be found")
+
+
+class RouterExternalGatewayNotSupported(qexc.BadRequest):
+    message = _("Router (flavor=vrouter) does not support an external network")

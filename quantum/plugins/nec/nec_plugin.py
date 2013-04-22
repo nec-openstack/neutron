@@ -18,19 +18,23 @@
 
 from quantum.agent import securitygroups_rpc as sg_rpc
 from quantum.api.rpc.agentnotifiers import dhcp_rpc_agent_api
-from quantum.api.rpc.agentnotifiers import l3_rpc_agent_api
+#from quantum.api.rpc.agentnotifiers import l3_rpc_agent_api
 from quantum.common import constants as q_const
 from quantum.common import exceptions as q_exc
 from quantum.common import rpc as q_rpc
 from quantum.common import topics
+from quantum.common import utils
 from quantum import context
 from quantum.db import agents_db
 from quantum.db import agentschedulers_db
 from quantum.db import dhcp_rpc_base
+from quantum.db import extraroute_db
+from quantum.db import l3_db
 from quantum.db import l3_rpc_base
 #NOTE(amotoki): quota_db cannot be removed, it is for db model
 from quantum.db import quota_db
 from quantum.db import securitygroups_rpc_base as sg_db_rpc
+from quantum.extensions import l3
 from quantum.extensions import portbindings
 from quantum.extensions import securitygroup as ext_sg
 from quantum.openstack.common import importutils
@@ -43,14 +47,13 @@ from quantum.plugins.nec.common import status
 from quantum.plugins.nec.db import api as ndb
 from quantum.plugins.nec.db import nec_plugin_base
 from quantum.plugins.nec import ofc_manager
-from quantum.plugins.nec import nec_router
 from quantum import policy
 
 LOG = logging.getLogger(__name__)
 
 
 class NECPluginV2(nec_plugin_base.NECPluginV2Base,
-                  nec_router.NecRouterMixin,
+                  extraroute_db.ExtraRoute_db_mixin,
                   sg_db_rpc.SecurityGroupServerRpcMixin,
                   agentschedulers_db.AgentSchedulerDbMixin):
     """NECPluginV2 controls an OpenFlow Controller.
@@ -100,20 +103,21 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
 
         self.network_scheduler = importutils.import_object(
             config.CONF.network_scheduler_driver)
-        self.router_scheduler = importutils.import_object(
-            config.CONF.router_scheduler_driver)
+        #self.router_scheduler = importutils.import_object(
+        #    config.CONF.router_scheduler_driver)
 
     def setup_rpc(self):
         self.topic = topics.PLUGIN
         self.conn = rpc.create_connection(new=True)
         self.notifier = NECPluginV2AgentNotifierApi(topics.AGENT)
         self.dhcp_agent_notifier = dhcp_rpc_agent_api.DhcpAgentNotifyAPI()
-        self.l3_agent_notifier = l3_rpc_agent_api.L3AgentNotify
+        #self.l3_agent_notifier = l3_rpc_agent_api.L3AgentNotify
 
         # NOTE: callback_sg is referred to from the sg unit test.
         self.callback_sg = SecurityGroupServerRpcCallback()
         callbacks = [NECPluginV2RPCCallbacks(self),
-                     DhcpRpcCallback(), L3RpcCallback(),
+                     DhcpRpcCallback(),
+                     #L3RpcCallback(),
                      self.callback_sg,
                      agents_db.AgentExtRpcCallback()]
         self.dispatcher = q_rpc.PluginRpcDispatcher(callbacks)
@@ -137,8 +141,12 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
     def _check_tenant_not_in_use(self, context, tenant_id):
         """Return True if the specified tenant is not used."""
         filters = dict(tenant_id=[tenant_id])
-        nets = super(NECPluginV2, self).get_networks(context, filters=filters)
-        return not nets
+        nets = self.get_networks(context, filters=filters)
+        if super(NECPluginV2, self).get_networks(context, filters=filters):
+            return False
+        if super(NECPluginV2, self).get_routers(context, filters=filters):
+            return False
+        return True
 
     def _cleanup_ofc_tenant(self, context, tenant_id):
 
@@ -467,6 +475,179 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
                 self._extend_port_dict_binding(context, port)
         return [self._fields(port, fields) for port in ports]
 
+    # Router/ExtraRoute Extensions
+
+    def create_router(self, context, router):
+        """Create a new router entry on DB, and create it on OFC."""
+        LOG.debug(_("NECPluginV2.create_router() called, "
+                    "router=%s ."), router)
+        tenant_id = self._get_tenant_id_for_create(context, router['router'])
+
+        # NOTE: Needs to set up default security groups for a tenant here?
+        # At the moment the default security group needs to be created
+        # when the first network is created for the tenant.
+
+        self._check_external_gateway_info(router['router'])
+
+        # create router in DB
+        # TODO(amotoki)
+        # needs to extend attribute after supporting flavor extension
+        with context.session.begin(subtransactions=True):
+            new_router = super(NECPluginV2, self).create_router(context,
+                                                                router)
+            self._update_resource_status(context, "router", new_router['id'],
+                                         status.OperationalStatus.BUILD)
+
+        # create router on the network controller
+        try:
+            self.ofc.ensure_ofc_tenant(context, tenant_id)
+            self.ofc.create_ofc_router(context, tenant_id,
+                                       new_router['id'], new_router['name'])
+        except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
+            reason = _("create_router() failed due to %s") % exc
+            LOG.error(reason)
+            self._update_resource_status(context, "router", new_router['id'],
+                                         status.OperationalStatus.ERROR)
+        else:
+            self._update_resource_status(context, "router", new_router['id'],
+                                         status.OperationalStatus.ACTIVE)
+        return new_router
+
+    def update_router(self, context, router_id, router):
+        LOG.debug(_("NECPluginV2.update_router() called, "
+                    "id=%(id)s, router=%(router)s ."),
+                  dict(id=router_id, router=router))
+
+        r = router['router']
+        self._check_external_gateway_info(r)
+
+        with context.session.begin(subtransactions=True):
+            #check if route exists and have permission to access
+            old_router = super(NECPluginV2, self).get_router(
+                context, router_id)
+            new_router = super(NECPluginV2, self).update_router(
+                context, router_id, router)
+            self._update_ofc_routes(context, router_id,
+                                    old_router['routes'], new_router['routes'])
+        return new_router
+
+    def delete_router(self, context, router_id):
+        LOG.debug(_("NECPluginV2.delete_router() called, id=%s."), router_id)
+
+        router = super(NECPluginV2, self).get_router(context, router_id)
+        tenant_id = router['tenant_id']
+        # Needs to be wrapped with a session
+        self._check_router_in_use(context, router_id)
+        super(NECPluginV2, self).delete_router(context, router_id)
+        try:
+            self.ofc.delete_ofc_router(context, router_id, router)
+        except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
+            reason = _("delete_router() failed due to %s") % exc
+            # NOTE: The OFC configuration of this network could be remained
+            #       as an orphan resource. But, it does NOT harm any other
+            #       resources, so this plugin just warns.
+            LOG.warn(reason)
+        self._cleanup_ofc_tenant(context, tenant_id)
+
+    def add_router_interface(self, context, router_id, interface_info):
+        LOG.debug(_("NECPluginV2.add_router_interface() called, "
+                    "id=%(id)s, interface=%(interface)s."),
+                  dict(id=router_id, interface=interface_info))
+        # Create intreface on DB
+        # NOTE: policy check is done in super().add_router_interface()
+        new_interface = super(NECPluginV2, self).add_router_interface(
+            context, router_id, interface_info)
+        port_id = new_interface['port_id']
+        port = self._get_port(context, port_id)
+        subnet = self._get_subnet(context, new_interface['subnet_id'])
+        port_info = {'network_id': port['network_id'],
+                     'ip_address': port['fixed_ips'][0]['ip_address'],
+                     'cidr': subnet['cidr'],
+                     'mac_address': port['mac_address']}
+        try:
+            self.ofc.add_ofc_router_interface(context, router_id,
+                                              port_id, port_info)
+        except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
+            reason = _("add_router_interface() failed due to %s") % exc
+            LOG.error(reason)
+            self._update_resource_status(context, "port", port_id,
+                                         status.OperationalStatus.ERROR)
+        else:
+            self._update_resource_status(context, "port", port_id,
+                                         status.OperationalStatus.ACTIVE)
+        return new_interface
+
+    def remove_router_interface(self, context, router_id, interface_info):
+        LOG.debug(_("NECPluginV2.remove_router_interface() called, "
+                    "id=%(id)s, interface=%(interface)s."),
+                  dict(id=router_id, interface=interface_info))
+
+        # make sure router exists
+        router = self._get_router(context, router_id)
+        try:
+            policy.enforce(context,
+                           "extension:router:remove_router_interface",
+                           self._make_router_dict(router))
+        except q_exc.PolicyNotAuthorized:
+            raise l3.RouterNotFound(router_id=router_id)
+
+        port_info = self._get_router_interface_port(context, router_id,
+                                                    interface_info)
+        port_id = port_info['id']
+        self._confirm_router_interface_not_in_use(
+            context, router_id, port_info['subnet_id'])
+
+        try:
+            self.ofc.delete_ofc_router_interface(context, router_id, port_id,
+                                                 port_info)
+            #super(NECPluginV2, self).delete_port(context, port_info['id'],
+            #                                     l3_port_check=False)
+            self.delete_port(context, port_info['id'], l3_port_check=False)
+        except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
+            reason = _("delete_router_interface() failed due to %s") % exc
+            LOG.error(reason)
+            self._update_resource_status(context, "port", port_id,
+                                         status.OperationalStatus.ERROR)
+            # XXX(amotoki): Should coordinate an exception type
+            # Internal Server Error will be returned now.
+            raise exc
+
+    def _check_router_in_use(self, context, router_id):
+        # Ensure that the router is not used
+        router_filter = {'router_id': [router_id]}
+        fips = self.get_floatingips_count(context.elevated(),
+                                          filters=router_filter)
+        if fips:
+            raise l3.RouterInUse(router_id=router_id)
+
+        device_filter = {'device_id': [router_id],
+                         'device_owner': [l3_db.DEVICE_OWNER_ROUTER_INTF]}
+        ports = self.get_ports_count(context.elevated(),
+                                     filters=device_filter)
+        if ports:
+            raise l3.RouterInUse(router_id=id)
+
+    def _check_external_gateway_info(self, router):
+        """Check if external network is specified.
+
+        vRouter router does not support the external network. If the external
+        network is specified this method raises an exception."""
+
+        if 'external_gateway_info' in router:
+            gw_info = router['external_gateway_info']
+            network_id = gw_info.get('network_id') if gw_info else None
+            if network_id:
+                raise nexc.RouterExternalGatewayNotSupported()
+
+    def _update_ofc_routes(self, context, router_id, old_routes, new_routes):
+        added, removed = utils.diff_list_of_dict(old_routes, new_routes)
+        # NOTE(amotoki): route-update should be supported by PFC.
+        # At the moment we need to remove an old route and then
+        # add a new route. It may leads to no route for some destination
+        # during route update.
+        self.ofc.update_ofc_router_route(context, router_id,
+                                         added, removed)
+
     # For PacketFilter Extension
 
     def _activate_packet_filter_if_ready(self, context, packet_filter,
@@ -615,9 +796,9 @@ class DhcpRpcCallback(dhcp_rpc_base.DhcpRpcCallbackMixin):
     RPC_API_VERSION = '1.0'
 
 
-class L3RpcCallback(l3_rpc_base.L3RpcCallbackMixin):
-    # L3PluginApi BASE_RPC_API_VERSION
-    RPC_API_VERSION = '1.0'
+#class L3RpcCallback(l3_rpc_base.L3RpcCallbackMixin):
+#    # L3PluginApi BASE_RPC_API_VERSION
+#    RPC_API_VERSION = '1.0'
 
 
 class SecurityGroupServerRpcCallback(

@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import mock
+
 from quantum.extensions import portbindings
 from quantum.tests.unit import _test_extension_portbindings as test_bindings
 from quantum.tests.unit import test_db_plugin as test_plugin
@@ -20,6 +22,7 @@ from quantum.tests.unit import test_security_groups_rpc as test_sg_rpc
 
 
 PLUGIN_NAME = 'quantum.plugins.nec.nec_plugin.NECPluginV2'
+OFC_MANAGER = 'quantum.plugins.nec.nec_plugin.ofc_manager.OFCManager'
 
 
 class NecPluginV2TestCase(test_plugin.QuantumDbPluginV2TestCase):
@@ -27,6 +30,13 @@ class NecPluginV2TestCase(test_plugin.QuantumDbPluginV2TestCase):
     _plugin_name = PLUGIN_NAME
 
     def setUp(self):
+        self.addCleanup(mock.patch.stopall)
+        ofc_manager_p = mock.patch(OFC_MANAGER)
+        ofc_manager_cls = ofc_manager_p.start()
+        self.ofc = mock.Mock()
+        ofc_manager_cls.return_value = self.ofc
+        #test_ini = path.join(path.dirname(__file__), 'etc', 'nec.ini.test')
+        #test_lib.test_config['config_files'] = [test_ini]
         super(NecPluginV2TestCase, self).setUp(self._plugin_name)
 
 

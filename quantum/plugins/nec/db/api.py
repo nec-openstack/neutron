@@ -50,7 +50,9 @@ old_resource_map = {'ofc_tenant': nmodels.OFCTenant,
 
 def _get_resource_model(resource, old_style):
     if old_style:
-        return old_resource_map[resource]
+        # NOTE: Some new resources are not defined in old_resource_map.
+        # In such case None is returned.
+        return old_resource_map.get(resource)
     else:
         return resource_map[resource]
 
@@ -64,8 +66,10 @@ def clear_db(base=model_base.BASEV2):
 
 
 def get_ofc_item(session, resource, quantum_id, old_style=False):
+    model = _get_resource_model(resource, old_style)
+    if not model:
+        return None
     try:
-        model = _get_resource_model(resource, old_style)
         return session.query(model).filter_by(quantum_id=quantum_id).one()
     except sa.orm.exc.NoResultFound:
         return None
