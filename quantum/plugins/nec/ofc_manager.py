@@ -16,10 +16,16 @@
 # @author: Ryota MIBU
 # @author: Akihiro MOTOKI
 
+import netaddr
+
+from quantum.openstack.common import log as logging
 from quantum.plugins.nec.common import config
 from quantum.plugins.nec.common import exceptions as nexc
 from quantum.plugins.nec.db import api as ndb
 from quantum.plugins.nec import drivers
+
+
+LOG = logging.getLogger(__name__)
 
 
 class OFCManager(object):
@@ -145,8 +151,8 @@ class OFCManager(object):
             context, ofc_tenant_id)
 
         desc = "ID=%s Name=%s at Quantum." % (router_id, name)
-        ofc_router_id = self.driver.create_router(ofc_tenant_id, desc,
-                                                  router_id)
+        ofc_router_id = self.driver.create_router(ofc_tenant_id, router_id,
+                                                  desc)
         self._add_ofc_item(context, "ofc_router", router_id, ofc_router_id)
 
     def exists_ofc_router(self, context, router_id):
@@ -158,26 +164,30 @@ class OFCManager(object):
         self._del_ofc_item(context, "ofc_router", router_id)
 
     def add_ofc_router_interface(self, context, router_id, port_id, port):
+        # port must have the following fields:
+        #   network_id, cidr, ip_address, mac_address
         ofc_router_id = self._get_ofc_id(context, "ofc_router", router_id)
-        network_id = port['network_id']
-        ip_address = port['fixed_ips'][0]['ip_address']
+        ofc_net_id = self._get_ofc_id(context, "ofc_network",
+                                      port['network_id'])
+        ip_address = '%s/%s' % (port['ip_address'],
+                                netaddr.IPNetwork(port['cidr']).prefixlen)
         mac_address = port['mac_address']
         ofc_inf_id = self.driver.add_router_interface(
-            ofc_router_id, network_id, ip_address, mac_address)
+            ofc_router_id, ofc_net_id, ip_address, mac_address)
         # Use port mapping table to maintain an interface of OFC router
         self._add_ofc_item(context, "ofc_port", port_id, ofc_inf_id)
 
     def delete_ofc_router_interface(self, context, router_id, port_id, port):
+        # Use port mapping table to maintain an interface of OFC router
         ofc_inf_id = self._get_ofc_id(context, "ofc_port", port_id)
         self.driver.delete_router_interface(ofc_inf_id)
-        # Use port mapping table to maintain an interface of OFC router
         self._del_ofc_item(context, "ofc_port", port_id)
 
     def update_ofc_router_route(self, context, router_id,
-                                added_routes, removed_routes):
+                                added_routes=[], removed_routes=[]):
         ofc_router_id = self._get_ofc_id(context, "ofc_router", router_id)
         if removed_routes:
-            ofc_routes = self.driver.list_router_route(context, ofc_router_id)
+            ofc_routes = self.driver.list_router_routes(ofc_router_id)
             route_dict = dict((','.join((r['destination'], r['nexthop'])),
                                r['id']) for r in ofc_routes)
         for r in removed_routes:
@@ -187,6 +197,7 @@ class OFCManager(object):
                             '%(dest)s, %(nexthop)si)',
                             dict(id=router_id, destination=r['destination'],
                                  nexthop=r['nexthop']))
+                continue
             route_id = route_dict[key]
             self.driver.delete_router_route(route_id)
         for r in added_routes:

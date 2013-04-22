@@ -79,6 +79,10 @@ class PFCDriverBase(ofc_driver_base.OFCDriverBase):
         """
         return self._generate_pfc_str(desc)[:127]
 
+    def _extract_ofc_network_id(self, ofc_network_id):
+        # ofc_network_id : /tenants/<tenant-id>/networks/<network-id>
+        return ofc_network_id.split('/')[4]
+
     def create_tenant(self, description, tenant_id=None):
         ofc_tenant_id = self._generate_pfc_id(tenant_id)
         body = {'id': ofc_tenant_id}
@@ -149,7 +153,7 @@ class PFCRouterDriverMixin(object):
     def router_supported(cls):
         return True
 
-    def create_router(self, ofc_tenant_id, description, router_id):
+    def create_router(self, ofc_tenant_id, router_id, description):
         path = '%s/routers' % ofc_tenant_id
         res = self.client.post(path, body=None)
         ofc_router_id = res['id']
@@ -158,11 +162,11 @@ class PFCRouterDriverMixin(object):
     def delete_router(self, ofc_router_id):
         return self.client.delete(ofc_router_id)
 
-    def add_router_interface(self, ofc_router_id, network_id,
+    def add_router_interface(self, ofc_router_id, ofc_net_id,
                              ip_address=None, mac_address=None):
         # ip_address : <ip_address>/<netmask> (e.g., 10.0.0.0/24)
         path = '%s/interfaces' % ofc_router_id
-        body = {'net_id', network_id}
+        body = {'net_id': self._extract_ofc_network_id(ofc_net_id)}
         if ip_address:
             body['ip_address'] = ip_address
         if mac_address:
@@ -180,7 +184,7 @@ class PFCRouterDriverMixin(object):
             body['ip_address'] = ip_address
         if mac_address:
             body['mac_address'] = mac_address
-        return self.client.put(path, body=body)
+        return self.client.put(ofc_router_inf_id, body=body)
 
     def delete_router_interface(self, ofc_router_inf_id):
         return self.client.delete(ofc_router_inf_id)
