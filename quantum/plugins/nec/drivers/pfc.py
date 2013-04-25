@@ -192,6 +192,9 @@ class PFCRouterDriverMixin(object):
     def list_router_routes(self, ofc_router_id):
         path = '%s/routes' % ofc_router_id
         ret = self.client.get(path)
+        # Prepend ofc_router_id to route_id
+        for r in ret['routes']:
+            r['id'] = ofc_router_id + '/routes/' + r['id']
         return ret['routes']
 
     def add_router_route(self, ofc_router_id, destination, nexthop):

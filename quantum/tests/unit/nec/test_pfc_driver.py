@@ -15,6 +15,7 @@
 #    under the License.
 # @author: Ryota MIBU
 
+import copy
 import random
 import string
 
@@ -345,8 +346,12 @@ class PFCV5DriverTest(PFCDriverTestBase):
 
         ret = self.driver.list_router_routes(router_path)
         self.mox.VerifyAll()
+
+        expected = [{'id': routes_path + '/' + self._get_route_id(r[0], r[1]),
+                     'destination': r[0], 'nexthop': r[1]}
+                    for r in routes]
         self.assertEqual(len(routes), len(ret))
-        self.assertEqual(data['routes'], ret)
+        self.assertEqual(data['routes'], expected)
 
 
 class PFCDriverStringTest(base.BaseTestCase):
