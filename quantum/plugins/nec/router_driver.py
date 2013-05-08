@@ -94,6 +94,9 @@ class RouterDriverBase(object):
 
 
 class RouterL3AgentDriver(RouterDriverBase):
+
+    support_external_network = True
+
     def create_router(self, context, tenant_id, new_router):
         LOG.debug('RouterL3AgentDriver:create_router'
                   '(router=%s)', new_router)
@@ -127,6 +130,9 @@ class RouterL3AgentDriver(RouterDriverBase):
 
 
 class RouterVRouterDriver(RouterDriverBase):
+
+    support_external_network = False
+
     def create_router(self, context, tenant_id, new_router):
         try:
             self.ofc.ensure_ofc_tenant(context, tenant_id)
