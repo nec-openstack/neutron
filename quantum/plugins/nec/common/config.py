@@ -59,7 +59,7 @@ flavor_opts = [
                help=_('Default router flavor to use.')),
     cfg.ListOpt('router_flavors', default=DEFAULT_FLAVORS,
                 help=_('List of enabled router flavors.'))
-    ]
+]
 
 
 cfg.CONF.register_opts(ovs_opts, "OVS")
