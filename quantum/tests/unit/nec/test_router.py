@@ -58,6 +58,9 @@ class NecRouterTestCaseSkipFloatingIp(object):
     def test_floatingips_op_agent(self):
         pass
 
+    def test_floatingip_list_with_port_id(self):
+        pass
+
     def test_two_fips_one_port_invalid_return_409(self):
         pass
 

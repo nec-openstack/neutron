@@ -34,6 +34,7 @@ from quantum.db import l3_rpc_base
 #NOTE(amotoki): quota_db cannot be removed, it is for db model
 from quantum.db import quota_db
 from quantum.db import securitygroups_rpc_base as sg_db_rpc
+from quantum.extensions import flavor as ext_flavor
 from quantum.extensions import l3
 from quantum.extensions import portbindings
 from quantum.extensions import securitygroup as ext_sg
@@ -47,6 +48,7 @@ from quantum.plugins.nec.common import status
 from quantum.plugins.nec.db import api as ndb
 from quantum.plugins.nec.db import nec_plugin_base
 from quantum.plugins.nec import ofc_manager
+from quantum.plugins.nec import router_driver
 from quantum import policy
 
 LOG = logging.getLogger(__name__)
@@ -70,7 +72,7 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
     """
     _supported_extension_aliases = ["router", "quotas", "binding",
                                     "security-group", "extraroute",
-                                    "agent", "agent_scheduler",
+                                    "agent", "agent_scheduler", "flavor",
                                     ]
 
     @property
@@ -105,6 +107,8 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
             config.CONF.network_scheduler_driver)
         #self.router_scheduler = importutils.import_object(
         #    config.CONF.router_scheduler_driver)
+
+        self.router_driver = router_driver.RouterVRouterDriver(self.ofc)
 
     def setup_rpc(self):
         self.topic = topics.PLUGIN
@@ -499,18 +503,14 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
                                          status.OperationalStatus.BUILD)
 
         # create router on the network controller
-        try:
-            self.ofc.ensure_ofc_tenant(context, tenant_id)
-            self.ofc.create_ofc_router(context, tenant_id,
-                                       new_router['id'], new_router['name'])
-        except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
-            reason = _("create_router() failed due to %s") % exc
-            LOG.error(reason)
-            self._update_resource_status(context, "router", new_router['id'],
-                                         status.OperationalStatus.ERROR)
+        result = self.router_driver.create_router(context, tenant_id,
+                                                  new_router)
+        if result:
+            new_status = status.OperationalStatus.ACTIVE
         else:
-            self._update_resource_status(context, "router", new_router['id'],
-                                         status.OperationalStatus.ACTIVE)
+            new_status = status.OperationalStatus.ERROR
+        self._update_resource_status(context, "router", new_router['id'],
+                                     new_status)
         return new_router
 
     def update_router(self, context, router_id, router):
@@ -527,8 +527,8 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
                 context, router_id)
             new_router = super(NECPluginV2, self).update_router(
                 context, router_id, router)
-            self._update_ofc_routes(context, router_id,
-                                    old_router['routes'], new_router['routes'])
+            self.router_driver.update_router(context, router_id,
+                                             old_router, new_router)
         return new_router
 
     def delete_router(self, context, router_id):
@@ -539,15 +539,23 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
         # Needs to be wrapped with a session
         self._check_router_in_use(context, router_id)
         super(NECPluginV2, self).delete_router(context, router_id)
-        try:
-            self.ofc.delete_ofc_router(context, router_id, router)
-        except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
-            reason = _("delete_router() failed due to %s") % exc
-            # NOTE: The OFC configuration of this network could be remained
-            #       as an orphan resource. But, it does NOT harm any other
-            #       resources, so this plugin just warns.
-            LOG.warn(reason)
+        self.router_driver.delete_router(context, router_id, router)
+        # TODO(amotoki): It is better to remove a tenant if all related
+        # OFC resources are removed from OFC. In the current implementation
+        # the tenant is not removed if a router with l3-agent exists.
         self._cleanup_ofc_tenant(context, tenant_id)
+
+    def get_router(self, context, id, fields=None):
+        router = super(NECPluginV2, self).get_router(context, id, fields)
+        return self._extend_router_dict_flavor(context, router)
+
+    def get_routers(self, context, filters=None, fields=None):
+        with context.session.begin(subtransactions=True):
+            routers = super(NECPluginV2, self).get_routers(context, filters,
+                                                           fields)
+            for router in routers:
+                self._extend_router_dict_flavor(context, router)
+        return routers
 
     def add_router_interface(self, context, router_id, interface_info):
         LOG.debug(_("NECPluginV2.add_router_interface() called, "
@@ -564,17 +572,14 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
                      'ip_address': port['fixed_ips'][0]['ip_address'],
                      'cidr': subnet['cidr'],
                      'mac_address': port['mac_address']}
-        try:
-            self.ofc.add_ofc_router_interface(context, router_id,
-                                              port_id, port_info)
-        except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
-            reason = _("add_router_interface() failed due to %s") % exc
-            LOG.error(reason)
-            self._update_resource_status(context, "port", port_id,
-                                         status.OperationalStatus.ERROR)
+
+        result = self.router_driver.add_interface(context, router_id, port_id,
+                                                  port_info)
+        if result:
+            new_status = status.OperationalStatus.ACTIVE
         else:
-            self._update_resource_status(context, "port", port_id,
-                                         status.OperationalStatus.ACTIVE)
+            new_status = status.OperationalStatus.ERROR
+        self._update_resource_status(context, "port", port_id, new_status)
         return new_interface
 
     def remove_router_interface(self, context, router_id, interface_info):
@@ -597,20 +602,11 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
         self._confirm_router_interface_not_in_use(
             context, router_id, port_info['subnet_id'])
 
-        try:
-            self.ofc.delete_ofc_router_interface(context, router_id, port_id,
-                                                 port_info)
-            #super(NECPluginV2, self).delete_port(context, port_info['id'],
-            #                                     l3_port_check=False)
-            self.delete_port(context, port_info['id'], l3_port_check=False)
-        except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
-            reason = _("delete_router_interface() failed due to %s") % exc
-            LOG.error(reason)
-            self._update_resource_status(context, "port", port_id,
-                                         status.OperationalStatus.ERROR)
-            # XXX(amotoki): Should coordinate an exception type
-            # Internal Server Error will be returned now.
-            raise exc
+        self.router_driver.delete_interface(context, router_id, port_id,
+                                            port_info)
+        # NOTE: If driver.delete_interface fails, raise an exception
+        # delete_port below is called only when delete_interface succeeds.
+        self.delete_port(context, port_info['id'], l3_port_check=False)
 
     def _check_router_in_use(self, context, router_id):
         # Ensure that the router is not used
@@ -639,14 +635,13 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
             if network_id:
                 raise nexc.RouterExternalGatewayNotSupported()
 
-    def _update_ofc_routes(self, context, router_id, old_routes, new_routes):
-        added, removed = utils.diff_list_of_dict(old_routes, new_routes)
-        # NOTE(amotoki): route-update should be supported by PFC.
-        # At the moment we need to remove an old route and then
-        # add a new route. It may leads to no route for some destination
-        # during route update.
-        self.ofc.update_ofc_router_route(context, router_id,
-                                         added, removed)
+    def _get_flavor_by_router_id(self, context, router_id):
+        return ndb.get_flavor_by_router(context.session, router_id)
+
+    def _extend_router_dict_flavor(self, context, router):
+        flavor = self._get_flavor_by_router_id(context, router['id'])
+        router[ext_flavor.FLAVOR_ROUTER] = flavor
+        return router
 
     # For PacketFilter Extension
 

@@ -78,12 +78,18 @@ class OFCFilter(model_base.BASEV2, models_v2.HasId, HasQuantumId):
     """Represents a Filter on OpenFlow Network/Controller."""
 
 
+"""PortInfo table"""
+
+
 class PortInfo(model_base.BASEV2, models_v2.HasId):
     """Represents a Virtual Interface."""
     datapath_id = sa.Column(sa.String(36), nullable=False)
     port_no = sa.Column(sa.Integer, nullable=False)
     vlan_id = sa.Column(sa.Integer, nullable=False)
     mac = sa.Column(sa.String(32), nullable=False)
+
+
+"""Packet Filter table"""
 
 
 class PacketFilter(model_base.BASEV2, models_v2.HasId, models_v2.HasTenant):
@@ -106,3 +112,17 @@ class PacketFilter(model_base.BASEV2, models_v2.HasId, models_v2.HasTenant):
     # status
     admin_state_up = sa.Column(sa.Boolean(), nullable=False)
     status = sa.Column(sa.String(16), nullable=False)
+
+
+"""Flavor extension"""
+
+
+class RouterFlavor(models_v2.model_base.BASEV2):
+    """Represents a binding of router_id to flavor."""
+    flavor = sa.Column(sa.String(255))
+    router_id = sa.Column(sa.String(36), sa.ForeignKey('routers.id',
+                                                       ondelete="CASCADE"),
+                          primary_key=True)
+
+    def __repr__(self):
+        return "<RouterFlavor(%s,%s)>" % (self.flavor, self.router_id)

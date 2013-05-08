@@ -51,10 +51,21 @@ ofc_opts = [
                help=_("Certificate file")),
 ]
 
+DEFAULT_FLAVORS = ['l3-agent', 'vrouter']
+DEFAULT_FLAVOR = DEFAULT_FLAVORS[0]
+
+flavor_opts = [
+    cfg.StrOpt('default_router_flavor', default=DEFAULT_FLAVOR,
+               help=_('Default router flavor to use.')),
+    cfg.ListOpt('router_flavors', default=DEFAULT_FLAVORS,
+                help=_('List of enabled router flavors.'))
+    ]
+
 
 cfg.CONF.register_opts(ovs_opts, "OVS")
 cfg.CONF.register_opts(agent_opts, "AGENT")
 cfg.CONF.register_opts(ofc_opts, "OFC")
+cfg.CONF.register_opts(flavor_opts, "FLAVOR")
 config.register_agent_state_opts_helper(cfg.CONF)
 config.register_root_helper(cfg.CONF)
 cfg.CONF.register_opts(scheduler.AGENTS_SCHEDULER_OPTS)
@@ -64,3 +75,4 @@ CONF = cfg.CONF
 OVS = cfg.CONF.OVS
 AGENT = cfg.CONF.AGENT
 OFC = cfg.CONF.OFC
+FLAVOR = cfg.CONF.FLAVOR

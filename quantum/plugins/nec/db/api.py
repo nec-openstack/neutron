@@ -16,6 +16,7 @@
 # @author: Ryota MIBU
 
 import sqlalchemy as sa
+from sqlalchemy.orm import exc as sa_exc
 
 from quantum.db import api as db
 from quantum.db import model_base
@@ -232,3 +233,19 @@ def get_port_from_device(port_id):
     port_dict['fixed_ips'] = [ip['ip_address']
                               for ip in port['fixed_ips']]
     return port_dict
+
+
+def get_flavor_by_router(session, router_id):
+    try:
+        binding = (session.query(nmodels.RouterFlavor).
+                   filter_by(router_id=router_id).
+                   one())
+    except sa_exc.NoResultFound:
+        return None
+    return binding.flavor
+
+
+def add_router_flavor_binding(session, flavor, router_id):
+    binding = nmodels.RouterFlavor(flavor=flavor, router_id=router_id)
+    session.add(binding)
+    return binding
