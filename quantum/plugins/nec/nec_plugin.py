@@ -109,7 +109,6 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
         #    config.CONF.router_scheduler_driver)
 
         router_driver.load_driver(self.ofc)
-        self.router_driver = router_driver.RouterVRouterDriver(self.ofc)
 
     def setup_rpc(self):
         self.topic = topics.PLUGIN
@@ -500,8 +499,7 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
 
         flavor = router_driver.get_flavor_with_default(
             router['router'].get(ext_flavor.FLAVOR_ROUTER))
-        # TODO(amotoki): to be enabled
-        #router_driver = router_driver.get_driver_by_flavor(flavor)
+        driver = router_driver.get_driver_by_flavor(flavor)
 
         with context.session.begin(subtransactions=True):
             new_router = super(NECPluginV2, self).create_router(context,
@@ -513,8 +511,7 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
                                          status.OperationalStatus.BUILD)
 
         # create router on the network controller
-        result = self.router_driver.create_router(context, tenant_id,
-                                                  new_router)
+        result = driver.create_router(context, tenant_id, new_router)
         if result:
             new_status = status.OperationalStatus.ACTIVE
         else:
@@ -538,8 +535,9 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
             new_router = super(NECPluginV2, self).update_router(
                 context, router_id, router)
             self._extend_router_dict_flavor(context, new_router)
-            self.router_driver.update_router(context, router_id,
-                                             old_router, new_router)
+            driver = self._get_router_driver_by_id(context, router_id)
+            driver.update_router(context, router_id,
+                                        old_router, new_router)
         return new_router
 
     def delete_router(self, context, router_id):
@@ -547,10 +545,13 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
 
         router = super(NECPluginV2, self).get_router(context, router_id)
         tenant_id = router['tenant_id']
-        # Needs to be wrapped with a session
+        # TODO(amotoki): Needs to be wrapped with a session
         self._check_router_in_use(context, router_id)
+        driver = self._get_router_driver_by_id(context, router_id)
         super(NECPluginV2, self).delete_router(context, router_id)
-        self.router_driver.delete_router(context, router_id, router)
+        # TODO(amotoki): router_driver.delete_router should be called before
+        # removing the router from the database?
+        driver.delete_router(context, router_id, router)
         # TODO(amotoki): It is better to remove a tenant if all related
         # OFC resources are removed from OFC. In the current implementation
         # the tenant is not removed if a router with l3-agent exists.
@@ -584,8 +585,8 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
                      'cidr': subnet['cidr'],
                      'mac_address': port['mac_address']}
 
-        result = self.router_driver.add_interface(context, router_id, port_id,
-                                                  port_info)
+        driver = self._get_router_driver_by_id(context, router_id)
+        result = driver.add_interface(context, router_id, port_id, port_info)
         if result:
             new_status = status.OperationalStatus.ACTIVE
         else:
@@ -613,8 +614,8 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
         self._confirm_router_interface_not_in_use(
             context, router_id, port_info['subnet_id'])
 
-        self.router_driver.delete_interface(context, router_id, port_id,
-                                            port_info)
+        driver = self._get_router_driver_by_id(context, router_id)
+        driver.delete_interface(context, router_id, port_id, port_info)
         # NOTE: If driver.delete_interface fails, raise an exception
         # delete_port below is called only when delete_interface succeeds.
         self.delete_port(context, port_info['id'], l3_port_check=False)
@@ -645,6 +646,10 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
             network_id = gw_info.get('network_id') if gw_info else None
             if network_id:
                 raise nexc.RouterExternalGatewayNotSupported()
+
+    def _get_router_driver_by_id(self, context, router_id):
+        flavor = self._get_flavor_by_router_id(context, router_id)
+        return router_driver.get_driver_by_flavor(flavor)
 
     def _get_flavor_by_router_id(self, context, router_id):
         return ndb.get_flavor_by_router(context.session, router_id)
