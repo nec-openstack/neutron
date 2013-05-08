@@ -39,8 +39,6 @@ class NecPluginV2TestCase(test_plugin.QuantumDbPluginV2TestCase):
         ofc_manager_cls = ofc_manager_p.start()
         self.ofc = mock.Mock()
         ofc_manager_cls.return_value = self.ofc
-        #test_ini = path.join(path.dirname(__file__), 'etc', 'nec.ini.test')
-        #test_lib.test_config['config_files'] = [test_ini]
         super(NecPluginV2TestCase, self).setUp(self._plugin_name)
 
 
@@ -82,18 +80,14 @@ class TestNecPortBindingNoSG(TestNecPortBinding):
 class TestNecPortsV2Callback(NecPluginV2TestCase):
 
     def setUp(self):
-        self.addCleanup(mock.patch.stopall)
-        ofc_manager_p = mock.patch(OFC_MANAGER)
-        ofc_manager_cls = ofc_manager_p.start()
-        self.ofc = mock.Mock()
-        ofc_manager_cls.return_value = self.ofc
-        self.ofc_port_exists = False
-        self._setup_side_effects()
-
         super(TestNecPortsV2Callback, self).setUp()
         self.context = q_context.get_admin_context()
         self.plugin = manager.QuantumManager.get_plugin()
         self.callbacks = nec_plugin.NECPluginV2RPCCallbacks(self.plugin)
+
+        self.ofc = self.plugin.ofc
+        self.ofc_port_exists = False
+        self._setup_side_effects()
 
     def _setup_side_effects(self):
         def _create_ofc_port_called(*args, **kwargs):

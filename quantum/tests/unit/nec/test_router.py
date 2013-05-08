@@ -1,4 +1,4 @@
-# Copyright (c) 2012 OpenStack Foundation.
+# Copyright (c) 2013 OpenStack Foundation.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,6 +20,17 @@ from quantum.tests.unit import test_extension_extraroute
 
 
 class NecRouterTestCaseSkipFloatingIp(object):
+    """Router test case for vrouter based implementation."""
+
+    # TODO(amotoki): to be investigated
+    def test_interfaces_op_agent(self):
+        pass
+
+    def test_router_add_interface_subnet(self):
+        pass
+
+    #------------------------------------------------------------
+
     def test_floating_ip_direct_port_delete_returns_409(self):
         pass
 
@@ -53,8 +64,6 @@ class NecRouterTestCaseSkipFloatingIp(object):
     def test_router_create_with_gwinfo(self):
         pass
 
-    #def test_interfaces_op_agent
-
     def test_l3_agent_routers_query_floatingips(self):
         pass
 
@@ -78,8 +87,6 @@ class NecRouterTestCaseSkipFloatingIp(object):
 
     def test_router_add_gateway_tenant_ctx(self):
         pass
-
-    #def test_router_add_interface_subnet
 
     def test_router_delete_with_floatingip_existed_returns_409(self):
         pass
