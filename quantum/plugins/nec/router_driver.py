@@ -95,18 +95,34 @@ class RouterDriverBase(object):
 
 class RouterL3AgentDriver(RouterDriverBase):
     def create_router(self, context, tenant_id, new_router):
+        LOG.debug('RouterL3AgentDriver:create_router'
+                  '(router=%s)', new_router)
         return True
 
     def update_router(self, context, router_id, old_router, new_router):
+        LOG.debug('RouterL3AgentDriver:update_router'
+                  '(id=%(id)s, router=%(router)s)',
+                  {'id': router_id, 'router': new_router})
         return True
 
     def delete_router(self, context, router_id, router):
+        LOG.debug('RouterL3AgentDriver:delete_router'
+                  '(id=%(id)s, router=%(router)s)',
+                  {'id': router_id, 'router': router})
         return True
 
     def add_interface(self, context, router_id, port_id, port_info):
+        LOG.debug('RouterL3AgentDriver:add_interface'
+                  '(id=%(id)s, port_id=%(port_id)s, port_info=%(port_info)s)',
+                  {'id': router_id, 'port_id': port_id,
+                   'port_info': port_info})
         return True
 
     def delete_interface(self, context, router_id, port_id, port_info):
+        LOG.debug('RouterL3AgentDriver:delete_interface'
+                  '(id=%(id)s, port_id=%(port_id)s, port_info=%(port_info)s)',
+                  {'id': router_id, 'port_id': port_id,
+                   'port_info': port_info})
         return True
 
 
