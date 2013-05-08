@@ -491,8 +491,6 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
         # At the moment the default security group needs to be created
         # when the first network is created for the tenant.
 
-        self._check_external_gateway_info(router['router'])
-
         # create router in DB
         # TODO(amotoki)
         # needs to extend attribute after supporting flavor extension
@@ -500,6 +498,8 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
         flavor = router_driver.get_flavor_with_default(
             router['router'].get(ext_flavor.FLAVOR_ROUTER))
         driver = router_driver.get_driver_by_flavor(flavor)
+
+        self._check_external_gateway_info(router['router'], driver)
 
         with context.session.begin(subtransactions=True):
             new_router = super(NECPluginV2, self).create_router(context,
@@ -525,17 +525,15 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
                     "id=%(id)s, router=%(router)s ."),
                   dict(id=router_id, router=router))
 
-        r = router['router']
-        self._check_external_gateway_info(r)
-
         with context.session.begin(subtransactions=True):
             #check if route exists and have permission to access
             old_router = super(NECPluginV2, self).get_router(
                 context, router_id)
+            driver = self._get_router_driver_by_id(context, router_id)
+            self._check_external_gateway_info(router['router'], driver)
             new_router = super(NECPluginV2, self).update_router(
                 context, router_id, router)
             self._extend_router_dict_flavor(context, new_router)
-            driver = self._get_router_driver_by_id(context, router_id)
             driver.update_router(context, router_id,
                                         old_router, new_router)
         return new_router
@@ -635,16 +633,15 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
         if ports:
             raise l3.RouterInUse(router_id=id)
 
-    def _check_external_gateway_info(self, router):
+    def _check_external_gateway_info(self, router, driver):
         """Check if external network is specified.
 
         vRouter router does not support the external network. If the external
         network is specified this method raises an exception."""
 
-        if 'external_gateway_info' in router:
-            gw_info = router['external_gateway_info']
-            network_id = gw_info.get('network_id') if gw_info else None
-            if network_id:
+        if not driver.support_external_network:
+            gw_info = router.get('external_gateway_info')
+            if gw_info and gw_info.get('network_id'):
                 raise nexc.RouterExternalGatewayNotSupported()
 
     def _get_router_driver_by_id(self, context, router_id):
