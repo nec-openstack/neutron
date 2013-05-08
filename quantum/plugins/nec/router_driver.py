@@ -14,10 +14,17 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import sys
+
+from quantum.api.v2 import attributes as attr
 from quantum.common import utils
+from quantum.common import exceptions as q_exc
 from quantum.openstack.common import importutils
+from quantum.openstack.common import log as logging
 from quantum.plugins.nec.common import config
 from quantum.plugins.nec.common import exceptions as nexc
+
+LOG = logging.getLogger(__name__)
 
 ROUTER_DRIVER_PATH = 'quantum.plugins.nec.router_driver.%s'
 ROUTER_DRIVER_MAP = {'l3-agent': ROUTER_DRIVER_PATH % 'RouterL3AgentDriver',
@@ -26,29 +33,81 @@ ROUTER_DRIVER_MAP = {'l3-agent': ROUTER_DRIVER_PATH % 'RouterL3AgentDriver',
 ROUTER_DRIVERS = {}
 
 
-def load_router_driver(ofc_manager):
-    enabled_flavors = (set(config.FLAVOR.router_flavors) &
+def load_driver(ofc_manager):
+    if config.FLAVOR.default_router_flavor not in ROUTER_DRIVER_MAP:
+        LOG.error(_('default_router_flavor %(default)s is supported! '
+                    'Please specify one of %(supported)s'),
+                  {'default': config.FLAVOR.default_router_flavor,
+                   'supported': ROUTER_DRIVER_MAP.keys()})
+        sys.exit(1)
+
+    enabled_flavors = (set(config.FLAVOR.router_flavors +
+                           [config.FLAVOR.default_router_flavor]) &
                        set(ROUTER_DRIVER_MAP.keys()))
+
     for driver in enabled_flavors:
         driver_klass = importutils.import_class(ROUTER_DRIVER_MAP[driver])
         ROUTER_DRIVERS[driver] = driver_klass(ofc_manager)
 
+    if not ROUTER_DRIVERS:
+        LOG.error(_('No router flavor is enabled. quantum-server terminated!'
+                    ' (supported=%(supported)s, configured=%(config)s)'),
+                  {'supported': ROUTER_DRIVER_MAP.keys(),
+                   'config': config.FLAVOR.router_flavors})
+        sys.exit(1)
 
-def check_router_driver_enabled(flavor):
-    return flavor in ROUTER_DRIVERS
+
+def get_flavor_with_default(flavor):
+    if not attr.is_attr_set(flavor):
+        flavor = config.FLAVOR.default_router_flavor
+    elif flavor not in ROUTER_DRIVERS:
+        raise nexc.FlavorNotFound(flavor=flavor)
+    return flavor
 
 
-def get_router_driver_by_flavor(flavor):
-    return ROUTER_DRIVERS.get(flavor)
+def get_driver_by_flavor(flavor):
+    if flavor is None:
+        flavor = config.FLAVOR.default_router_flavor
+    elif flavor not in ROUTER_DRIVERS:
+        raise nexc.FlavorNotFound(flavor=flavor)
+    return ROUTER_DRIVERS[flavor]
 
 
 class RouterDriverBase(object):
     def __init__(self, ofc_manager):
         self.ofc = ofc_manager
 
+    def create_router(self, context, tenant_id, new_router):
+        raise q_exc.NotImplementedError()
+
+    def update_router(self, context, router_id, old_router, new_router):
+        raise q_exc.NotImplementedError()
+
+    def delete_router(self, context, router_id, router):
+        raise q_exc.NotImplementedError()
+
+    def add_interface(self, context, router_id, port_id, port_info):
+        raise q_exc.NotImplementedError()
+
+    def delete_interface(self, context, router_id, port_id, port_info):
+        raise q_exc.NotImplementedError()
+
 
 class RouterL3AgentDriver(RouterDriverBase):
-    pass
+    def create_router(self, context, tenant_id, new_router):
+        return True
+
+    def update_router(self, context, router_id, old_router, new_router):
+        return True
+
+    def delete_router(self, context, router_id, router):
+        return True
+
+    def add_interface(self, context, router_id, port_id, port_info):
+        return True
+
+    def delete_interface(self, context, router_id, port_id, port_info):
+        return True
 
 
 class RouterVRouterDriver(RouterDriverBase):
@@ -64,18 +123,21 @@ class RouterVRouterDriver(RouterDriverBase):
             return False
 
     def update_router(self, context, router_id, old_router, new_router):
-        self._update_ofc_routes(context, router_id,
-                                old_router['routes'], new_router['routes'])
+        return self._update_ofc_routes(context, router_id,
+                                       old_router['routes'],
+                                       new_router['routes'])
 
     def delete_router(self, context, router_id, router):
         try:
             self.ofc.delete_ofc_router(context, router_id, router)
+            return True
         except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
             reason = _("delete_router() failed due to %s") % exc
             # NOTE: The OFC configuration of this network could be remained
             #       as an orphan resource. But, it does NOT harm any other
             #       resources, so this plugin just warns.
             LOG.warn(reason)
+            return False
 
     def add_interface(self, context, router_id, port_id, port_info):
         try:
@@ -91,6 +153,7 @@ class RouterVRouterDriver(RouterDriverBase):
         try:
             self.ofc.delete_ofc_router_interface(context, router_id, port_id,
                                                  port_info)
+            return True
         except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
             reason = _("delete_router_interface() failed due to %s") % exc
             LOG.error(reason)
@@ -106,5 +169,11 @@ class RouterVRouterDriver(RouterDriverBase):
         # At the moment we need to remove an old route and then
         # add a new route. It may leads to no route for some destination
         # during route update.
-        self.ofc.update_ofc_router_route(context, router_id,
-                                         added, removed)
+        try:
+            self.ofc.update_ofc_router_route(context, router_id,
+                                             added, removed)
+            return True
+        except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
+            reason = _("_update_ofc_routes() failed due to %s") % exc
+            LOG.error(reason)
+            return False

@@ -246,6 +246,8 @@ def get_flavor_by_router(session, router_id):
 
 
 def add_router_flavor_binding(session, flavor, router_id):
+    LOG.debug(_("Add flavor binding (router=%(router_id)s, flavor=%(flavor)s"),
+              {'router_id': router_id, 'flavor': flavor})
     binding = nmodels.RouterFlavor(flavor=flavor, router_id=router_id)
     session.add(binding)
     return binding

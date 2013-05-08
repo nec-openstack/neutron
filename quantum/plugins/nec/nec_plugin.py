@@ -108,6 +108,7 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
         #self.router_scheduler = importutils.import_object(
         #    config.CONF.router_scheduler_driver)
 
+        router_driver.load_driver(self.ofc)
         self.router_driver = router_driver.RouterVRouterDriver(self.ofc)
 
     def setup_rpc(self):
@@ -496,9 +497,18 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
         # create router in DB
         # TODO(amotoki)
         # needs to extend attribute after supporting flavor extension
+
+        flavor = router_driver.get_flavor_with_default(
+            router['router'].get(ext_flavor.FLAVOR_ROUTER))
+        # TODO(amotoki): to be enabled
+        #router_driver = router_driver.get_driver_by_flavor(flavor)
+
         with context.session.begin(subtransactions=True):
             new_router = super(NECPluginV2, self).create_router(context,
                                                                 router)
+            ndb.add_router_flavor_binding(context.session,
+                                          flavor, str(new_router['id']))
+            self._extend_router_dict_flavor(context, new_router)
             self._update_resource_status(context, "router", new_router['id'],
                                          status.OperationalStatus.BUILD)
 
@@ -527,6 +537,7 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
                 context, router_id)
             new_router = super(NECPluginV2, self).update_router(
                 context, router_id, router)
+            self._extend_router_dict_flavor(context, new_router)
             self.router_driver.update_router(context, router_id,
                                              old_router, new_router)
         return new_router
