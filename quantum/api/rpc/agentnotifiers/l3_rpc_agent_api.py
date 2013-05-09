@@ -68,21 +68,31 @@ class L3AgentNotifyAPI(proxy.RpcProxy):
                                            routers=[router]),
                     topic='%s.%s' % (l3_agent.topic, l3_agent.host))
 
+    #def _notification(self, context, method, routers, operation, data):
+    #    """Notify all the agents that are hosting the routers"""
+    #    plugin = manager.QuantumManager.get_plugin()
+    #    if utils.is_extension_supported(
+    #        plugin, constants.AGENT_SCHEDULER_EXT_ALIAS):
+    #        adminContext = (context.is_admin and
+    #                        context or context.elevated())
+    #        plugin.schedule_routers(adminContext, routers)
+    #        self._agent_notification(
+    #            context, method, routers, operation, data)
+    #    else:
+    #        self.fanout_cast(
+    #            context, self.make_msg(method,
+    #                                   routers=routers),
+    #            topic=topics.L3_AGENT)
+
+    # Currently router agent scheduler is not supported.
+    # TODO(amotoki): support router agent scheduler
     def _notification(self, context, method, routers, operation, data):
         """Notify all the agents that are hosting the routers"""
         plugin = manager.QuantumManager.get_plugin()
-        if utils.is_extension_supported(
-            plugin, constants.AGENT_SCHEDULER_EXT_ALIAS):
-            adminContext = (context.is_admin and
-                            context or context.elevated())
-            plugin.schedule_routers(adminContext, routers)
-            self._agent_notification(
-                context, method, routers, operation, data)
-        else:
-            self.fanout_cast(
-                context, self.make_msg(method,
-                                       routers=routers),
-                topic=topics.L3_AGENT)
+        self.fanout_cast(
+            context, self.make_msg(method,
+                                   routers=routers),
+            topic=topics.L3_AGENT)
 
     def _notification_fanout(self, context, method, router_id):
         """Fanout the deleted router to all L3 agents"""

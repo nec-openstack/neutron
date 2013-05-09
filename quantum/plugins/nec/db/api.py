@@ -235,6 +235,28 @@ def get_port_from_device(port_id):
     return port_dict
 
 
+def _get_router_flavors_query(query, flavor=None, router_ids=None):
+    if flavor:
+        query = query.filter_by(flavor=flavor)
+    if router_ids:
+        column = nmodels.RouterFlavor.router_id
+        query = query.filter(column.in_(router_ids))
+    return query
+
+
+def get_router_flavors(session, flavor=None, router_ids=None):
+    query = session.query(nmodels.RouterFlavor)
+    query = _get_router_flavors_query(query, flavor, router_ids)
+    return [{'flavor': x.flavor, 'router_id': x.router_id}
+            for x in query]
+
+
+def get_routers_by_flavor(session, flavor, router_ids=None):
+    query = session.query(nmodels.RouterFlavor.router_id)
+    query = _get_router_flavors_query(query, flavor, router_ids)
+    return [x[0] for x in query]
+
+
 def get_flavor_by_router(session, router_id):
     try:
         binding = (session.query(nmodels.RouterFlavor).
