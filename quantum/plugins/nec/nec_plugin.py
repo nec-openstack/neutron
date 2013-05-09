@@ -18,13 +18,13 @@
 
 from quantum.agent import securitygroups_rpc as sg_rpc
 from quantum.api.rpc.agentnotifiers import dhcp_rpc_agent_api
-#from quantum.api.rpc.agentnotifiers import l3_rpc_agent_api
+from quantum.api.rpc.agentnotifiers import l3_rpc_agent_api
 from quantum.common import constants as q_const
 from quantum.common import exceptions as q_exc
 from quantum.common import rpc as q_rpc
 from quantum.common import topics
 from quantum.common import utils
-from quantum import context
+from quantum import context as quantum_context
 from quantum.db import agents_db
 from quantum.db import agentschedulers_db
 from quantum.db import dhcp_rpc_base
@@ -38,7 +38,9 @@ from quantum.extensions import flavor as ext_flavor
 from quantum.extensions import l3
 from quantum.extensions import portbindings
 from quantum.extensions import securitygroup as ext_sg
+from quantum import manager
 from quantum.openstack.common import importutils
+from quantum.openstack.common import jsonutils
 from quantum.openstack.common import log as logging
 from quantum.openstack.common import rpc
 from quantum.openstack.common.rpc import proxy
@@ -115,13 +117,14 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
         self.conn = rpc.create_connection(new=True)
         self.notifier = NECPluginV2AgentNotifierApi(topics.AGENT)
         self.dhcp_agent_notifier = dhcp_rpc_agent_api.DhcpAgentNotifyAPI()
-        #self.l3_agent_notifier = l3_rpc_agent_api.L3AgentNotify
+        self.l3_agent_notifier = l3_rpc_agent_api.L3AgentNotify
+        #self.l3_agent_notifier = L3AgentNotifyAPI()
 
         # NOTE: callback_sg is referred to from the sg unit test.
         self.callback_sg = SecurityGroupServerRpcCallback()
         callbacks = [NECPluginV2RPCCallbacks(self),
                      DhcpRpcCallback(),
-                     #L3RpcCallback(),
+                     L3RpcCallback(),
                      self.callback_sg,
                      agents_db.AgentExtRpcCallback()]
         self.dispatcher = q_rpc.PluginRpcDispatcher(callbacks)
@@ -644,6 +647,29 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
             if gw_info and gw_info.get('network_id'):
                 raise nexc.RouterExternalGatewayNotSupported()
 
+    #def get_sync_data(self, context, router_ids=None, active=None):
+    #    # get_sync_data need to return routers which is or should be
+    #    # hosted or  by l3-agents.
+    #    # TODO(amotoki):
+    #    # Currently it is done by _get_sync_routers() below, but in Havana code
+    #    #_get_sync_routers is integrated into get_routers().
+    #    # Thus we need to take care of the migration.
+    #    super(NECPluginV2, self).get_sync_data(context, router_ids, active)
+
+    def _get_sync_routers(self, context, router_ids=None, active=None):
+        # NOTE: List routers with l3-agent flavor
+        router_list = super(NECPluginV2, self)._get_sync_routers(context,
+                                                                 router_ids,
+                                                                 active)
+        if router_list:
+            _router_ids = [r['id'] for r in router_list]
+            agent_routers = ndb.get_routers_by_flavor(context.session,
+                                                      'l3-agent',
+                                                      router_ids=_router_ids)
+            router_list = [r for r in router_list
+                           if r['id'] in agent_routers]
+        return router_list
+
     def _get_router_driver_by_id(self, context, router_id):
         flavor = self._get_flavor_by_router_id(context, router_id)
         return router_driver.get_driver_by_flavor(flavor)
@@ -799,14 +825,38 @@ class NECPluginV2AgentNotifierApi(proxy.RpcProxy,
                          topic=self.topic_port_update)
 
 
+#class L3AgentNotifyAPI(l3_rpc_agent_api.L3AgentNotifyAPI):
+#
+#    # NOTE(amotoki): Do not use router agent scheduler
+#    def _notification(self, context, method, routers, operation, data):
+#        """Notify all the agents that are hosting the routers"""
+#        LOG.debug('L3AgentNotifyAPI:_notification(): %s', locals())
+#        self.fanout_cast(
+#            context, self.make_msg(method,
+#                                   routers=routers),
+#            topic=topics.L3_AGENT)
+
+
 class DhcpRpcCallback(dhcp_rpc_base.DhcpRpcCallbackMixin):
     # DhcpPluginApi BASE_RPC_API_VERSION
     RPC_API_VERSION = '1.0'
 
 
-#class L3RpcCallback(l3_rpc_base.L3RpcCallbackMixin):
-#    # L3PluginApi BASE_RPC_API_VERSION
-#    RPC_API_VERSION = '1.0'
+class L3RpcCallback(l3_rpc_base.L3RpcCallbackMixin):
+    # L3PluginApi BASE_RPC_API_VERSION
+    RPC_API_VERSION = '1.0'
+
+    def sync_routers(self, context, **kwargs):
+        # Copied from l3_rpc_base.L3RpcCallbackMixin
+        # and disabled router agent scheduler
+        router_id = kwargs.get('router_id')
+        host = kwargs.get('host')
+        context = quantum_context.get_admin_context()
+        plugin = manager.QuantumManager.get_plugin()
+        routers = plugin.get_sync_data(context, router_id)
+        LOG.debug(_("Routers returned to l3 agent:\n %s"),
+                  jsonutils.dumps(routers, indent=5))
+        return routers
 
 
 class SecurityGroupServerRpcCallback(
