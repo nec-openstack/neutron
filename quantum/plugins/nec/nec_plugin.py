@@ -148,7 +148,6 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
     def _check_tenant_not_in_use(self, context, tenant_id):
         """Return True if the specified tenant is not used."""
         filters = dict(tenant_id=[tenant_id])
-        nets = self.get_networks(context, filters=filters)
         if super(NECPluginV2, self).get_networks(context, filters=filters):
             return False
         if super(NECPluginV2, self).get_routers(context, filters=filters):
@@ -156,7 +155,6 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
         return True
 
     def _cleanup_ofc_tenant(self, context, tenant_id):
-
         if self._check_tenant_not_in_use(context, tenant_id):
             try:
                 self.ofc.delete_ofc_tenant(context, tenant_id)
