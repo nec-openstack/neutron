@@ -21,6 +21,12 @@ from quantum.common import exceptions as qexc
 class OFCException(qexc.QuantumException):
     message = _("An OFC exception has occurred: %(reason)s")
 
+    def __init__(self, **kwargs):
+        super(OFCException, self).__init__(**kwargs)
+        self.status = kwargs.get('status')
+        self.err_msg = kwargs.get('err_msg')
+        self.err_code = kwargs.get('err_code')
+
 
 class NECDBException(qexc.QuantumException):
     message = _("An exception occurred in NECPluginV2 DB: %(reason)s")
@@ -46,3 +52,7 @@ class RouterExternalGatewayNotSupported(qexc.BadRequest):
 
 class FlavorNotFound(qexc.NotFound):
     message = _("Flavor %(flavor)s could not be found")
+
+
+class RouterOverLimit(qexc.Conflict):
+    message = _("Cannot create no more routers with flavor=%(flavor)s")

@@ -16,6 +16,8 @@
 
 import sys
 
+import httplib
+
 from quantum.api.v2 import attributes as attr
 from quantum.common import utils
 from quantum.common import exceptions as q_exc
@@ -27,24 +29,27 @@ from quantum.plugins.nec.common import exceptions as nexc
 
 LOG = logging.getLogger(__name__)
 
+FLAVOR_L3AGENT = nconst.ROUTER_FLAVOR_L3AGENT
+FLAVOR_OPENFLOW = nconst.ROUTER_FLAVOR_OPENFLOW
+
 ROUTER_DRIVER_PATH = 'quantum.plugins.nec.router_driver.%s'
 ROUTER_DRIVER_MAP = {
-    nconst.ROUTER_FLAVOR_L3AGENT: ROUTER_DRIVER_PATH % 'RouterL3AgentDriver',
-    nconst.ROUTER_FLAVOR_OPENFLOW: ROUTER_DRIVER_PATH % 'RouterOpenFlowDriver'}
+    FLAVOR_L3AGENT: ROUTER_DRIVER_PATH % 'RouterL3AgentDriver',
+    FLAVOR_OPENFLOW: ROUTER_DRIVER_PATH % 'RouterOpenFlowDriver'}
 
 ROUTER_DRIVERS = {}
 
 
 def load_driver(ofc_manager):
 
-    if (nconst.ROUTER_FLAVOR_OPENFLOW in ROUTER_DRIVER_MAP and
+    if (FLAVOR_OPENFLOW in ROUTER_DRIVER_MAP and
         not ofc_manager.driver.router_supported()):
         LOG.warning(_('OFC does not support router with flavor=%(flavor)s, '
                       'so removed it from supported flavor '
                       '(new router driver map=%(driver_map)s)'),
-                    {'flavor': nconst.ROUTER_FLAVOR_OPENFLOW,
+                    {'flavor': FLAVOR_OPENFLOW,
                      'driver_map': ROUTER_DRIVER_MAP})
-        del ROUTER_DRIVER_MAP[nconst.ROUTER_FLAVOR_OPENFLOW]
+        del ROUTER_DRIVER_MAP[FLAVOR_OPENFLOW]
 
     if config.FLAVOR.default_router_flavor not in ROUTER_DRIVER_MAP:
         LOG.error(_('default_router_flavor %(default)s is supported! '
@@ -154,9 +159,13 @@ class RouterOpenFlowDriver(RouterDriverBase):
                                        new_router['id'], new_router['name'])
             return True
         except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
-            reason = _("create_router() failed due to %s") % exc
-            LOG.error(reason)
-            return False
+            if (isinstance(exc, nexc.OFCException) and
+                exc.status == httplib.CONFLICT):
+                raise nexc.RouterOverLimit(flavor=FLAVOR_OPENFLOW)
+            else:
+                reason = _("create_router() failed due to %s") % exc
+                LOG.error(reason)
+                return False
 
     def update_router(self, context, router_id, old_router, new_router):
         return self._update_ofc_routes(context, router_id,

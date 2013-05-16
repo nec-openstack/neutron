@@ -83,22 +83,30 @@ class OFCClient(object):
             LOG.debug(_("OFC returns [%(status)s:%(data)s]"),
                       {'status': res.status,
                        'data': data})
+
+            # Try to decode JSON data if possible.
+            try:
+                data = json.loads(data)
+            except (ValueError, TypeError):
+                pass
+
             if res.status in (httplib.OK,
                               httplib.CREATED,
                               httplib.ACCEPTED,
                               httplib.NO_CONTENT):
-                # Try to decode JSON data if possible.
-                try:
-                    data = json.loads(data)
-                except (ValueError, TypeError):
-                    pass
                 return data
             else:
-                data = ' ' + data if data else ''
-                reason = (_("Operation on OFC is failed: %(status)s%(msg)s") %
-                          {'status': res.status, 'msg': data})
-                LOG.warning(reason)
-                raise nexc.OFCException(reason=reason)
+                LOG.warning(_("Operation on OFC is failed: "
+                              "status=%(status), detail=%(detail)"),
+                            {'status': res.status, 'detail': data})
+                params = {'reason': _("Operation on OFC is failed"),
+                          'status': res.status}
+                if isinstance(data, dict):
+                    params['err_code'] = data.get('err_code')
+                    params['err_msg'] = data.get('err_msg')
+                else:
+                    params['err_msg'] = data
+                raise nexc.OFCException(**params)
         except (socket.error, IOError) as e:
             reason = _("Failed to connect OFC : %s") % e
             LOG.error(reason)

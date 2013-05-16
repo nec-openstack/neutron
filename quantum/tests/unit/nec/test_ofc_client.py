@@ -28,7 +28,8 @@ from quantum.tests import base
 
 class OFCClientTest(base.BaseTestCase):
 
-    def _test_do_request(self, status, resbody, data, exctype=None):
+    def _test_do_request(self, status, resbody, data, exctype=None,
+                         exc_checks=None):
         res = mock.Mock()
         res.status = status
         res.read.return_value = resbody
@@ -44,6 +45,9 @@ class OFCClientTest(base.BaseTestCase):
                 e = self.assertRaises(exctype, client.do_request,
                                       'GET', '/somewhere', body={})
                 self.assertEqual(data, str(e))
+                if exc_checks:
+                    for k, v in exc_checks.items():
+                        self.assertEqual(v, getattr(e, k))
             else:
                 response = client.do_request('GET', '/somewhere', body={})
                 self.assertEqual(response, data)
@@ -69,18 +73,26 @@ class OFCClientTest(base.BaseTestCase):
             self._test_do_request(status, None, None)
 
     def test_do_request_error_no_body(self):
-        errmsg = ("An OFC exception has occurred: "
-                  "Operation on OFC is failed: "
-                  "400")
-        self._test_do_request(400, None, errmsg, nexc.OFCException)
+        errmsg = ("An OFC exception has occurred: Operation on OFC is failed")
+        exc_checks = {'status': 400, 'err_code': None, 'err_msg': None}
+        self._test_do_request(400, None, errmsg, nexc.OFCException, exc_checks)
 
     def test_do_request_error_string_body(self):
+        resbody = 'This is an error.'
+        errmsg = ("An OFC exception has occurred: Operation on OFC is failed")
+        exc_checks = {'status': 400, 'err_code': None,
+                      'err_msg': 'This is an error.'}
+        self._test_do_request(400, resbody, errmsg, nexc.OFCException,
+                              exc_checks)
+
+    def test_do_request_error_json_body(self):
         resbody = json.dumps({'err_code': 40022,
                               'err_msg': 'This is an error.'})
-        errmsg = ("An OFC exception has occurred: "
-                  "Operation on OFC is failed: "
-                  "400 %s") % resbody
-        self._test_do_request(400, resbody, errmsg, nexc.OFCException)
+        errmsg = ("An OFC exception has occurred: Operation on OFC is failed")
+        exc_checks = {'status': 400, 'err_code': 40022,
+                      'err_msg': 'This is an error.'}
+        self._test_do_request(400, resbody, errmsg, nexc.OFCException,
+                              exc_checks)
 
     def test_do_request_socket_error(self):
         conn = mock.Mock()
@@ -95,6 +107,8 @@ class OFCClientTest(base.BaseTestCase):
             e = self.assertRaises(nexc.OFCException, client.do_request,
                                   'GET', '/somewhere', body={})
             self.assertEqual(data, str(e))
+            for k in ['status', 'err_code', 'err_msg']:
+                self.assertIsNone(getattr(e, k))
 
             headers = {"Content-Type": "application/json"}
             expected = [

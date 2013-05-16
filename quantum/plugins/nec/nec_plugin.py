@@ -538,7 +538,11 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
                                          status.OperationalStatus.BUILD)
 
         # create router on the network controller
-        result = driver.create_router(context, tenant_id, new_router)
+        try:
+            result = driver.create_router(context, tenant_id, new_router)
+        except nexc.RouterOverLimit as e:
+            super(NECPluginV2, self).delete_router(context, new_router['id'])
+            raise e
         if result:
             new_status = status.OperationalStatus.ACTIVE
         else:
@@ -667,7 +671,6 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
                             'router.interface.delete',
                             notifier_api.CONF.default_notification_level,
                             {'router.interface': info})
-
 
     def _check_router_in_use(self, context, router_id):
         # Ensure that the router is not used

@@ -19,10 +19,13 @@ import netaddr
 
 from quantum.openstack.common import log as logging
 from quantum.openstack.common import uuidutils
+from quantum.plugins.nec.common import exceptions as nexc
 from quantum.plugins.nec import ofc_driver_base
 
 
 LOG = logging.getLogger(__name__)
+
+MAX_NUM_OPENFLOW_ROUTER = 2
 
 
 class StubOFCDriver(ofc_driver_base.OFCDriverBase):
@@ -169,6 +172,10 @@ class StubOFCDriver(ofc_driver_base.OFCDriverBase):
             if ofc_id in self.ofc_router_dict:
                 raise Exception('(create_router) OFC router %s already exists'
                                 % ofc_id)
+        if len(self.ofc_router_dict) >= MAX_NUM_OPENFLOW_ROUTER:
+            params = {'reason': _("Operation on OFC is failed"),
+                      'status': 409}
+            raise nexc.OFCException(**params)
         self.ofc_router_dict[ofc_id] = {'tenant_id': ofc_tenant_id,
                                         'router_id': router_id,
                                         'description': description}
