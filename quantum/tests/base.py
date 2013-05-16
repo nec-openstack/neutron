@@ -17,6 +17,7 @@
 
 """Base Test Case for all Unit Tests"""
 
+import logging as std_logging
 import os
 
 import fixtures
@@ -36,6 +37,7 @@ class BaseTestCase(testtools.TestCase):
         super(BaseTestCase, self).setUp()
 
         self.useFixture(fixtures.FakeLogger(
+            level=std_logging.DEBUG,
             format="%(asctime)s %(levelname)8s [%(name)s] %(message)s"))
 
         test_timeout = int(os.environ.get('OS_TEST_TIMEOUT', 0))
