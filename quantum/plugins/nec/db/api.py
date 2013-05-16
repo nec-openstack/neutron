@@ -19,6 +19,7 @@ import sqlalchemy as sa
 from sqlalchemy.orm import exc as sa_exc
 
 from quantum.db import api as db
+from quantum.db import l3_db
 from quantum.db import model_base
 from quantum.db import models_v2
 from quantum.db import securitygroups_db as sg_db
@@ -245,6 +246,7 @@ def _get_router_flavors_query(query, flavor=None, router_ids=None):
 
 
 def get_router_flavors(session, flavor=None, router_ids=None):
+    """Retrieve a list of a pair of router ID and its flavor."""
     query = session.query(nmodels.RouterFlavor)
     query = _get_router_flavors_query(query, flavor, router_ids)
     return [{'flavor': x.flavor, 'router_id': x.router_id}
@@ -252,12 +254,22 @@ def get_router_flavors(session, flavor=None, router_ids=None):
 
 
 def get_routers_by_flavor(session, flavor, router_ids=None):
+    """Retrieve a list of router IDs with the given flavor."""
     query = session.query(nmodels.RouterFlavor.router_id)
     query = _get_router_flavors_query(query, flavor, router_ids)
     return [x[0] for x in query]
 
 
+def get_router_count_by_flavor(session, flavor, tenant_id=None):
+    query = session.query(nmodels.RouterFlavor).filter_by(flavor=flavor)
+    if tenant_id:
+        query = (query.join('router').
+                 filter(l3_db.Router.tenant_id == tenant_id))
+    return query.count()
+
+
 def get_flavor_by_router(session, router_id):
+    """Retrieve a flavor of the given router."""
     try:
         binding = (session.query(nmodels.RouterFlavor).
                    filter_by(router_id=router_id).

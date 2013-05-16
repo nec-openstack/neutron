@@ -145,19 +145,25 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
         obj_updater = getattr(super(NECPluginV2, self), "update_%s" % resource)
         obj_updater(context, id, request)
 
-    def _check_tenant_not_in_use(self, context, tenant_id):
-        """Return True if the specified tenant is not used."""
+    def _check_ofc_tenant_in_use(self, context, tenant_id):
+        """Return False if the specified tenant is not used."""
+        # All networks are created on OFC
         filters = dict(tenant_id=[tenant_id])
-        if super(NECPluginV2, self).get_networks(context, filters=filters):
-            return False
-        if super(NECPluginV2, self).get_routers(context, filters=filters):
-            return False
-        return True
+        if self.get_networks_count(context, filters=filters):
+            return True
+        if ndb.get_router_count_by_flavor(context.session, 'vrouter',
+                                          tenant_id):
+            return True
+        return False
 
     def _cleanup_ofc_tenant(self, context, tenant_id):
-        if self._check_tenant_not_in_use(context, tenant_id):
+        if not self._check_ofc_tenant_in_use(context, tenant_id):
             try:
-                self.ofc.delete_ofc_tenant(context, tenant_id)
+                if self.ofc.exists_ofc_tenant(context, tenant_id):
+                    self.ofc.delete_ofc_tenant(context, tenant_id)
+                else:
+                    LOG.debug(_('_cleanup_ofc_tenant: No OFC tenant for %s'),
+                              tenant_id)
             except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
                 reason = _("delete_ofc_tenant() failed due to %s") % exc
                 LOG.warn(reason)
@@ -645,14 +651,15 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
             if gw_info and gw_info.get('network_id'):
                 raise nexc.RouterExternalGatewayNotSupported()
 
-    #def get_sync_data(self, context, router_ids=None, active=None):
-    #    # get_sync_data need to return routers which is or should be
-    #    # hosted or  by l3-agents.
-    #    # TODO(amotoki):
-    #    # Currently it is done by _get_sync_routers() below, but in Havana code
-    #    #_get_sync_routers is integrated into get_routers().
-    #    # Thus we need to take care of the migration.
-    #    super(NECPluginV2, self).get_sync_data(context, router_ids, active)
+    def get_sync_data(self, context, router_ids=None, active=None):
+        # get_sync_data need to return routers which is or should be
+        # hosted or  by l3-agents.
+        # TODO(amotoki):
+        # Currently it is done by _get_sync_routers() below, but in Havana
+        # code _get_sync_routers is integrated into get_routers().
+        # Thus we need to take care of the migration.
+        return super(NECPluginV2, self).get_sync_data(context, router_ids,
+                                                      active)
 
     def _get_sync_routers(self, context, router_ids=None, active=None):
         # NOTE: List routers with l3-agent flavor

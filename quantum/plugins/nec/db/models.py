@@ -16,7 +16,9 @@
 # @author: Ryota MIBU
 
 import sqlalchemy as sa
+from sqlalchemy import orm
 
+from quantum.db import l3_db
 from quantum.db import model_base
 from quantum.db import models_v2
 
@@ -123,6 +125,11 @@ class RouterFlavor(models_v2.model_base.BASEV2):
     router_id = sa.Column(sa.String(36), sa.ForeignKey('routers.id',
                                                        ondelete="CASCADE"),
                           primary_key=True)
+
+    router = orm.relationship(l3_db.Router, uselist=False)
+    #router = orm.relationship(l3_db.Router, uselist=False,
+    #                          backref=orm.backref('flavor', uselist=False,
+    #                                              cascade='delete'))
 
     def __repr__(self):
         return "<RouterFlavor(%s,%s)>" % (self.flavor, self.router_id)
