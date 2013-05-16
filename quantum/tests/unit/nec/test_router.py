@@ -23,83 +23,84 @@ from quantum.tests.unit import test_extension_extraroute as test_ext_route
 class NecRouterTestCaseSkipFloatingIp(object):
     """Router test case for PFC based implementation."""
 
-    def test_floating_ip_direct_port_delete_returns_409(self):
-        pass
-
-    def test_floatingip_crd_ops(self):
-        pass
-
-    def test_floatingip_delete_router_intf_with_port_id_returns_409(self):
-        pass
-
-    def test_floatingip_delete_router_intf_with_subnet_id_returns_409(self):
-        pass
-
-    def test_floatingip_port_delete(self):
-        pass
-
-    def test_floatingip_update(self):
-        pass
-
-    def test_floatingip_with_assoc(self):
-        pass
-
-    def test_floatingip_with_assoc_fails(self):
-        pass
-
-    def test_floatingips_op_agent(self):
-        pass
-
-    def test_floatingip_list_with_port_id(self):
-        pass
-
-    def test_two_fips_one_port_invalid_return_409(self):
-        pass
-
     def test_router_create_with_gwinfo(self):
-        pass
-
-    def test_l3_agent_routers_query_floatingips(self):
-        pass
-
-    def test_l3_agent_routers_query_gateway(self):
-        pass
-
-    def test_network_update_external(self):
-        pass
-
-    def test_network_update_external_failure(self):
-        pass
-
-    def test_router_add_gateway(self):
-        pass
+        self.skipTest('No external gateway support')
 
     def test_router_add_gateway_dup_subnet2_returns_400(self):
-        pass
+        self.skipTest('No external gateway support')
+
+    def test_router_add_gateway(self):
+        self.skipTest('No external gateway support')
 
     def test_router_add_gateway_invalid_network_returns_404(self):
-        pass
+        self.skipTest('No external gateway support')
 
     def test_router_add_gateway_tenant_ctx(self):
-        pass
+        self.skipTest('No external gateway support')
 
     def test_router_delete_with_floatingip_existed_returns_409(self):
-        pass
-
-    def test_router_gateway_op_agent(self):
-        pass
+        self.skipTest('No external gateway support')
 
     def test_router_update_gateway(self):
-        pass
-
-    def test_router_update_gateway_to_empty_with_existed_floatingip(self):
-        pass
+        self.skipTest('No external gateway support')
 
     def test_router_update_gateway_with_existed_floatingip(self):
-        pass
+        self.skipTest('No external gateway support')
 
+    def test_router_update_gateway_to_empty_with_existed_floatingip(self):
+        self.skipTest('No external gateway support')
+
+    def test_network_update_external_failure(self):
+        self.skipTest('No external gateway support')
+
+    def test_network_update_external(self):
+        self.skipTest('No external gateway support')
+
+    def test_floatingip_crd_ops(self):
+        self.skipTest('No external gateway support')
+
+    def test_floatingip_with_assoc_fails(self):
+        self.skipTest('No external gateway support')
+
+    def test_floatingip_update(self):
+        self.skipTest('No external gateway support')
+
+    def test_floatingip_with_assoc(self):
+        self.skipTest('No external gateway support')
+
+    def test_floatingip_port_delete(self):
+        self.skipTest('No external gateway support')
+
+    def test_two_fips_one_port_invalid_return_409(self):
+        self.skipTest('No external gateway support')
+
+    def test_floating_ip_direct_port_delete_returns_409(self):
+        self.skipTest('No external gateway support')
+
+    def test_floatingip_list_with_port_id(self):
+        self.skipTest('No external gateway support')
+
+    def test_floatingip_delete_router_intf_with_port_id_returns_409(self):
+        self.skipTest('No external gateway support')
+
+    def test_floatingip_delete_router_intf_with_subnet_id_returns_409(self):
+        self.skipTest('No external gateway support')
+
+    def test_router_gateway_op_agent(self):
+        self.skipTest('No external gateway support')
+
+    def test_floatingips_op_agent(self):
+        self.skipTest('No external gateway support')
+
+    def test_l3_agent_routers_query_floatingips(self):
+        self.skipTest('No external gateway support')
+
+    def test_l3_agent_routers_query_gateway(self):
+        self.skipTest('No external gateway support')
+
+    # test_extension_extraroute
     def test_router_update_on_external_port(self):
-        pass
+        self.skipTest('No external gateway support')
 
 
 class NecRouterL3AgentTestCase(test_ext_route.ExtraRouteDBTestCase):
