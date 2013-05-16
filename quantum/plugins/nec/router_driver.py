@@ -36,6 +36,16 @@ ROUTER_DRIVERS = {}
 
 
 def load_driver(ofc_manager):
+
+    if (nconst.ROUTER_FLAVOR_OPENFLOW in ROUTER_DRIVER_MAP and
+        not ofc_manager.driver.router_supported()):
+        LOG.warning(_('OFC does not support router with flavor=%(flavor)s, '
+                      'so removed it from supported flavor '
+                      '(new router driver map=%(driver_map)s)'),
+                    {'flavor': nconst.ROUTER_FLAVOR_OPENFLOW,
+                     'driver_map': ROUTER_DRIVER_MAP})
+        del ROUTER_DRIVER_MAP[nconst.ROUTER_FLAVOR_OPENFLOW]
+
     if config.FLAVOR.default_router_flavor not in ROUTER_DRIVER_MAP:
         LOG.error(_('default_router_flavor %(default)s is supported! '
                     'Please specify one of %(supported)s'),
@@ -50,6 +60,8 @@ def load_driver(ofc_manager):
     for driver in enabled_flavors:
         driver_klass = importutils.import_class(ROUTER_DRIVER_MAP[driver])
         ROUTER_DRIVERS[driver] = driver_klass(ofc_manager)
+
+    LOG.info(_('Enabled router drivers: %s'), ROUTER_DRIVERS.keys())
 
     if not ROUTER_DRIVERS:
         LOG.error(_('No router flavor is enabled. quantum-server terminated!'
