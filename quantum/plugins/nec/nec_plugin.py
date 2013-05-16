@@ -27,6 +27,7 @@ from quantum.common import utils
 from quantum import context as quantum_context
 from quantum.db import agents_db
 from quantum.db import agentschedulers_db
+from quantum.db import db_base_plugin_v2
 from quantum.db import dhcp_rpc_base
 from quantum.db import extraroute_db
 from quantum.db import l3_db
@@ -228,7 +229,7 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
             self._update_resource_status(context, "port", port['id'],
                                          port_status)
 
-    def deactivate_port(self, context, port):
+    def deactivate_port(self, context, port, update_status=True):
         """Deactivate port by deleting port from OFC if exists.
 
         Deactivate port and packet_filters associated with the port.
@@ -245,7 +246,7 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
             LOG.debug(_("deactivate_port(): skip, ofc_port does not "
                         "exist."))
 
-        if port_status is not port['status']:
+        if update_status and port_status is not port['status']:
             self._update_resource_status(context, "port", port['id'],
                                          port_status)
 
@@ -354,6 +355,13 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
         net = super(NECPluginV2, self).get_network(context, id)
         tenant_id = net['tenant_id']
 
+        # Get a list of auto-delete ports
+        filter = {'network_id': [id],
+                  'device_owner': db_base_plugin_v2.AUTO_DELETE_PORT_OWNERS}
+        auto_delete_ports = self.get_ports(context, filters=filter)
+        LOG.debug('delete_network(): auto_delete_ports=%s',
+                  auto_delete_ports)
+
         # get packet_filters associated with the network
         if self.packet_filter_enabled:
             filters = dict(network_id=[id])
@@ -361,6 +369,14 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
                    get_packet_filters(context, filters=filters))
 
         super(NECPluginV2, self).delete_network(context, id)
+
+        # delete_network checks whether we can delete it,
+        # so we need to delete auto_delete_ports here.
+        for port in auto_delete_ports:
+            LOG.debug(_('delete_network(): deleting auto-delete port '
+                        'from OFC (%s)'), port)
+            self.deactivate_port(context, port, update_status=False)
+
         try:
             self.ofc.delete_ofc_network(context, id, net)
         except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
@@ -638,8 +654,6 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
         self.delete_port(context, port_info['id'], l3_port_check=False)
 
         routers = self.get_sync_data(context.elevated(), [router_id])
-        LOG.debug('##### routers_updated in remove_router_interface: %s',
-                  routers)
         l3_rpc_agent_api.L3AgentNotify.routers_updated(
             context, routers, 'remove_router_interface',
             {'network_id': port_info['network_id'],
