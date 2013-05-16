@@ -45,6 +45,7 @@ from quantum.openstack.common import log as logging
 from quantum.openstack.common import rpc
 from quantum.openstack.common.rpc import proxy
 from quantum.plugins.nec.common import config
+from quantum.plugins.nec.common import constants as nconst
 from quantum.plugins.nec.common import exceptions as nexc
 from quantum.plugins.nec.common import status
 from quantum.plugins.nec.db import api as ndb
@@ -151,7 +152,8 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
         filters = dict(tenant_id=[tenant_id])
         if self.get_networks_count(context, filters=filters):
             return True
-        if ndb.get_router_count_by_flavor(context.session, 'vrouter',
+        if ndb.get_router_count_by_flavor(context.session,
+                                          nconst.ROUTER_FLAVOR_OPENFLOW,
                                           tenant_id):
             return True
         return False
@@ -643,13 +645,14 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
     def _check_external_gateway_info(self, router, driver):
         """Check if external network is specified.
 
-        vRouter router does not support the external network. If the external
-        network is specified this method raises an exception."""
-
+        The router implementation by PFC does not support the external network.
+        If the external network is specified this method raises an exception.
+        """
         if not driver.support_external_network:
             gw_info = router.get('external_gateway_info')
             if gw_info and gw_info.get('network_id'):
-                raise nexc.RouterExternalGatewayNotSupported()
+                raise nexc.RouterExternalGatewayNotSupported(
+                    flavor=nconst.ROUTER_FLAVOR_OPENFLOW)
 
     def get_sync_data(self, context, router_ids=None, active=None):
         # get_sync_data need to return routers which is or should be

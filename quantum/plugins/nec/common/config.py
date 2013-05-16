@@ -21,6 +21,7 @@ from quantum.agent.common import config
 # import rpc config options
 from quantum.openstack.common import rpc
 from quantum import scheduler
+from quantum.plugins.nec.common import constants as nconst
 
 
 ovs_opts = [
@@ -51,13 +52,10 @@ ofc_opts = [
                help=_("Certificate file")),
 ]
 
-DEFAULT_FLAVORS = ['l3-agent', 'vrouter']
-DEFAULT_FLAVOR = DEFAULT_FLAVORS[0]
-
 flavor_opts = [
-    cfg.StrOpt('default_router_flavor', default=DEFAULT_FLAVOR,
+    cfg.StrOpt('default_router_flavor', default=nconst.DEFAULT_ROUTER_FLAVOR,
                help=_('Default router flavor to use.')),
-    cfg.ListOpt('router_flavors', default=DEFAULT_FLAVORS,
+    cfg.ListOpt('router_flavors', default=nconst.DEFAULT_ROUTER_FLAVORS,
                 help=_('List of enabled router flavors.'))
 ]
 

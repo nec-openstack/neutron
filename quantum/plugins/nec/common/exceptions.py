@@ -40,7 +40,8 @@ class PacketFilterNotFound(qexc.NotFound):
 
 
 class RouterExternalGatewayNotSupported(qexc.BadRequest):
-    message = _("Router (flavor=vrouter) does not support an external network")
+    message = _("Router (flavor=%(flavor)s) does not support "
+                "an external network")
 
 
 class FlavorNotFound(qexc.NotFound):

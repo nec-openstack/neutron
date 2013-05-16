@@ -22,13 +22,15 @@ from quantum.common import exceptions as q_exc
 from quantum.openstack.common import importutils
 from quantum.openstack.common import log as logging
 from quantum.plugins.nec.common import config
+from quantum.plugins.nec.common import constants as nconst
 from quantum.plugins.nec.common import exceptions as nexc
 
 LOG = logging.getLogger(__name__)
 
 ROUTER_DRIVER_PATH = 'quantum.plugins.nec.router_driver.%s'
-ROUTER_DRIVER_MAP = {'l3-agent': ROUTER_DRIVER_PATH % 'RouterL3AgentDriver',
-                     'vrouter': ROUTER_DRIVER_PATH % 'RouterVRouterDriver'}
+ROUTER_DRIVER_MAP = {
+    nconst.ROUTER_FLAVOR_L3AGENT: ROUTER_DRIVER_PATH % 'RouterL3AgentDriver',
+    nconst.ROUTER_FLAVOR_OPENFLOW: ROUTER_DRIVER_PATH % 'RouterOpenFlowDriver'}
 
 ROUTER_DRIVERS = {}
 
@@ -129,7 +131,7 @@ class RouterL3AgentDriver(RouterDriverBase):
         return True
 
 
-class RouterVRouterDriver(RouterDriverBase):
+class RouterOpenFlowDriver(RouterDriverBase):
 
     support_external_network = False
 

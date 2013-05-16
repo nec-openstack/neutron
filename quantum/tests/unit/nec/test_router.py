@@ -20,7 +20,7 @@ from quantum.tests.unit import test_extension_extraroute
 
 
 class NecRouterTestCaseSkipFloatingIp(object):
-    """Router test case for vrouter based implementation."""
+    """Router test case for PFC based implementation."""
 
     # TODO(amotoki): to be investigated
     def test_interfaces_op_agent(self):
