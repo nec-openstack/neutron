@@ -15,21 +15,13 @@
 
 import mock
 
+from quantum import manager
 from quantum.tests.unit.nec import test_nec_plugin
-from quantum.tests.unit import test_extension_extraroute
+from quantum.tests.unit import test_extension_extraroute as test_ext_route
 
 
 class NecRouterTestCaseSkipFloatingIp(object):
     """Router test case for PFC based implementation."""
-
-    # TODO(amotoki): to be investigated
-    def test_interfaces_op_agent(self):
-        pass
-
-    def test_router_add_interface_subnet(self):
-        pass
-
-    #------------------------------------------------------------
 
     def test_floating_ip_direct_port_delete_returns_409(self):
         pass
@@ -110,8 +102,7 @@ class NecRouterTestCaseSkipFloatingIp(object):
         pass
 
 
-class NecRouterTestCase(NecRouterTestCaseSkipFloatingIp,
-                        test_extension_extraroute.ExtraRouteDBTestCase):
+class NecRouterL3AgentTestCase(test_ext_route.ExtraRouteDBTestCase):
 
     _plugin_name = test_nec_plugin.PLUGIN_NAME
 
@@ -122,4 +113,12 @@ class NecRouterTestCase(NecRouterTestCaseSkipFloatingIp,
         self.ofc = mock.Mock()
         ofc_manager_cls.return_value = self.ofc
 
-        super(NecRouterTestCase, self).setUp(self._plugin_name)
+        super(NecRouterL3AgentTestCase, self).setUp(self._plugin_name)
+        plugin = manager.QuantumManager.get_plugin()
+        plugin.network_scheduler = None
+        plugin.router_scheduler = None
+
+
+class NecRouterOpenFlowTestCase(NecRouterTestCaseSkipFloatingIp,
+                                NecRouterL3AgentTestCase):
+    pass

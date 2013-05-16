@@ -42,6 +42,7 @@ from quantum import manager
 from quantum.openstack.common import importutils
 from quantum.openstack.common import jsonutils
 from quantum.openstack.common import log as logging
+from quantum.openstack.common.notifier import api as notifier_api
 from quantum.openstack.common import rpc
 from quantum.openstack.common.rpc import proxy
 from quantum.plugins.nec.common import config
@@ -141,10 +142,11 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
 
     def _update_resource_status(self, context, resource, id, status):
         """Update status of specified resource."""
-        request = {}
-        request[resource] = dict(status=status)
-        obj_updater = getattr(super(NECPluginV2, self), "update_%s" % resource)
-        obj_updater(context, id, request)
+        request = {'status': status}
+        obj_getter = getattr(self, '_get_%s' % resource)
+        with context.session.begin(subtransactions=True):
+            obj_db = obj_getter(context, id)
+            obj_db.update(request)
 
     def _check_ofc_tenant_in_use(self, context, tenant_id):
         """Return False if the specified tenant is not used."""
@@ -615,17 +617,43 @@ class NECPluginV2(nec_plugin_base.NECPluginV2Base,
         except q_exc.PolicyNotAuthorized:
             raise l3.RouterNotFound(router_id=router_id)
 
+        #------------------------------------------------------------
+        # NOTE(amotoki): diff from l3_db -- Need port_info to call driver
         port_info = self._get_router_interface_port(context, router_id,
                                                     interface_info)
+        #------------------------------------------------------------
         port_id = port_info['id']
         self._confirm_router_interface_not_in_use(
             context, router_id, port_info['subnet_id'])
 
         driver = self._get_router_driver_by_id(context, router_id)
+
+        #------------------------------------------------------------
+        # NOTE(amotoki): diff from l3_db
         driver.delete_interface(context, router_id, port_id, port_info)
         # NOTE: If driver.delete_interface fails, raise an exception
         # delete_port below is called only when delete_interface succeeds.
+        #------------------------------------------------------------
+
         self.delete_port(context, port_info['id'], l3_port_check=False)
+
+        routers = self.get_sync_data(context.elevated(), [router_id])
+        LOG.debug('##### routers_updated in remove_router_interface: %s',
+                  routers)
+        l3_rpc_agent_api.L3AgentNotify.routers_updated(
+            context, routers, 'remove_router_interface',
+            {'network_id': port_info['network_id'],
+             'subnet_id': port_info['subnet_id']})
+        info = {'id': router_id,
+                'tenant_id': port_info['tenant_id'],
+                'port_id': port_info['id'],
+                'subnet_id': port_info['subnet_id']}
+        notifier_api.notify(context,
+                            notifier_api.publisher_id('network'),
+                            'router.interface.delete',
+                            notifier_api.CONF.default_notification_level,
+                            {'router.interface': info})
+
 
     def _check_router_in_use(self, context, router_id):
         # Ensure that the router is not used
