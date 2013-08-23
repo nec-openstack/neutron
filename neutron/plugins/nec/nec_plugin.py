@@ -28,11 +28,14 @@ from neutron.db import agentschedulers_db
 from neutron.db import db_base_plugin_v2
 from neutron.db import dhcp_rpc_base
 from neutron.db import extraroute_db
+from neutron.db import l3_db
 from neutron.db import l3_gwmode_db
 from neutron.db import l3_rpc_base
 from neutron.db import portbindings_base
 from neutron.db import quota_db  # noqa
 from neutron.db import securitygroups_rpc_base as sg_db_rpc
+from neutron.extensions import flavor as ext_flavor
+from neutron.extensions import l3
 from neutron.extensions import portbindings
 from neutron.openstack.common import importutils
 from neutron.openstack.common import log as logging
@@ -40,8 +43,11 @@ from neutron.openstack.common import rpc
 from neutron.openstack.common.rpc import proxy
 from neutron.openstack.common import uuidutils
 from neutron.plugins.nec.common import config
+from neutron.plugins.nec.common import constants as nconst
 from neutron.plugins.nec.common import exceptions as nexc
 from neutron.plugins.nec.db import api as ndb
+from neutron.plugins.nec.db import router as rdb
+from neutron.plugins.nec import nec_router
 from neutron.plugins.nec import ofc_manager
 from neutron.plugins.nec import packet_filter
 
@@ -68,12 +74,18 @@ class NECPluginV2(db_base_plugin_v2.NeutronDbPluginV2,
     The port binding extension enables an external application relay
     information to and from the plugin.
     """
-    _supported_extension_aliases = ["router", "ext-gw-mode", "quotas",
-                                    "binding", "security-group",
-                                    "extraroute", "agent",
-                                    "l3_agent_scheduler",
+    _supported_extension_aliases = ["agent",
+                                    "binding",
                                     "dhcp_agent_scheduler",
-                                    "packet-filter"]
+                                    "ext-gw-mode",
+                                    "extraroute",
+                                    "flavor",
+                                    "l3_agent_scheduler",
+                                    "packet-filter",
+                                    "quotas",
+                                    "router",
+                                    "security-group",
+                                    ]
 
     @property
     def supported_extension_aliases(self):
@@ -97,6 +109,7 @@ class NECPluginV2(db_base_plugin_v2.NeutronDbPluginV2,
                                      'neutron/plugins/nec/extensions')
 
         self.setup_rpc()
+        self.l3_rpc_notifier = L3AgentNotifyAPI()
 
         self.network_scheduler = importutils.import_object(
             config.CONF.network_scheduler_driver
@@ -105,6 +118,8 @@ class NECPluginV2(db_base_plugin_v2.NeutronDbPluginV2,
             config.CONF.router_scheduler_driver
         )
 
+        nec_router.load_driver(self.ofc)
+
     def setup_rpc(self):
         self.topic = topics.PLUGIN
         self.conn = rpc.create_connection(new=True)
@@ -112,14 +127,13 @@ class NECPluginV2(db_base_plugin_v2.NeutronDbPluginV2,
         self.agent_notifiers[const.AGENT_TYPE_DHCP] = (
             dhcp_rpc_agent_api.DhcpAgentNotifyAPI()
         )
-        self.agent_notifiers[const.AGENT_TYPE_L3] = (
-            l3_rpc_agent_api.L3AgentNotify
-        )
+        self.agent_notifiers[const.AGENT_TYPE_L3] = L3AgentNotifyAPI()
 
         # NOTE: callback_sg is referred to from the sg unit test.
         self.callback_sg = SecurityGroupServerRpcCallback()
         callbacks = [NECPluginV2RPCCallbacks(self),
-                     DhcpRpcCallback(), L3RpcCallback(),
+                     DhcpRpcCallback(),
+                     L3RpcCallback(),
                      self.callback_sg,
                      agents_db.AgentExtRpcCallback()]
         self.dispatcher = q_rpc.PluginRpcDispatcher(callbacks)
@@ -129,10 +143,35 @@ class NECPluginV2(db_base_plugin_v2.NeutronDbPluginV2,
 
     def _update_resource_status(self, context, resource, id, status):
         """Update status of specified resource."""
-        request = {}
-        request[resource] = dict(status=status)
-        obj_updater = getattr(super(NECPluginV2, self), "update_%s" % resource)
-        obj_updater(context, id, request)
+        request = {'status': status}
+        obj_getter = getattr(self, '_get_%s' % resource)
+        with context.session.begin(subtransactions=True):
+            obj_db = obj_getter(context, id)
+            obj_db.update(request)
+
+    def _check_ofc_tenant_in_use(self, context, tenant_id):
+        """Return False if the specified tenant is not used."""
+        # All networks are created on OFC
+        filters = dict(tenant_id=[tenant_id])
+        if self.get_networks_count(context, filters=filters):
+            return True
+        if rdb.get_router_count_by_flavor(context.session,
+                                          nec_router.FLAVOR_OPENFLOW,
+                                          tenant_id):
+            return True
+        return False
+
+    def _cleanup_ofc_tenant(self, context, tenant_id):
+        if not self._check_ofc_tenant_in_use(context, tenant_id):
+            try:
+                if self.ofc.exists_ofc_tenant(context, tenant_id):
+                    self.ofc.delete_ofc_tenant(context, tenant_id)
+                else:
+                    LOG.debug(_('_cleanup_ofc_tenant: No OFC tenant for %s'),
+                              tenant_id)
+            except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
+                reason = _("delete_ofc_tenant() failed due to %s") % exc
+                LOG.warn(reason)
 
     def activate_port_if_ready(self, context, port, network=None):
         """Activate port by creating port on OFC if ready.
@@ -313,7 +352,6 @@ class NECPluginV2(db_base_plugin_v2.NeutronDbPluginV2,
                 self.delete_packet_filter(context, pf['id'])
 
         try:
-            # 'net' parameter is required to lookup old OFC mapping
             self.ofc.delete_ofc_network(context, id, net)
         except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
             reason = _("delete_network() failed due to %s") % exc
@@ -324,15 +362,7 @@ class NECPluginV2(db_base_plugin_v2.NeutronDbPluginV2,
 
         super(NECPluginV2, self).delete_network(context, id)
 
-        # delete unnessary ofc_tenant
-        filters = dict(tenant_id=[tenant_id])
-        nets = super(NECPluginV2, self).get_networks(context, filters=filters)
-        if not nets:
-            try:
-                self.ofc.delete_ofc_tenant(context, tenant_id)
-            except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
-                reason = _("delete_ofc_tenant() failed due to %s") % exc
-                LOG.warn(reason)
+        self._cleanup_ofc_tenant(context, tenant_id)
 
     def _get_base_binding_dict(self):
         binding = {
@@ -425,6 +455,207 @@ class NECPluginV2(db_base_plugin_v2.NeutronDbPluginV2,
             super(NECPluginV2, self).delete_port(context, id)
         self.notify_security_groups_member_updated(context, port)
 
+    # Router/ExtraRoute Extensions
+
+    def create_router(self, context, router):
+        """Create a new router entry on DB, and create it on OFC."""
+        LOG.debug(_("NECPluginV2.create_router() called, "
+                    "router=%s ."), router)
+        tenant_id = self._get_tenant_id_for_create(context, router['router'])
+
+        # NOTE: Needs to set up default security groups for a tenant here?
+        # At the moment the default security group needs to be created
+        # when the first network is created for the tenant.
+
+        flavor = nec_router.get_flavor_with_default(
+            router['router'].get(ext_flavor.FLAVOR_ROUTER))
+        driver = nec_router.get_driver_by_flavor(flavor)
+
+        self._check_external_gateway_info(router['router'], driver)
+
+        with context.session.begin(subtransactions=True):
+            new_router = super(NECPluginV2, self).create_router(context,
+                                                                router)
+            rdb.add_router_flavor_binding(context.session,
+                                          flavor, str(new_router['id']))
+            self._extend_router_dict_flavor(context, new_router)
+
+        # create router on the network controller
+        try:
+            result = driver.create_router(context, tenant_id, new_router)
+        except nexc.RouterOverLimit as e:
+            super(NECPluginV2, self).delete_router(context, new_router['id'])
+            raise e
+        if result:
+            new_status = nec_router.STATUS_ACTIVE
+        else:
+            new_status = nec_router.STATUS_ERROR
+        self._update_resource_status(context, "router", new_router['id'],
+                                     new_status)
+        return new_router
+
+    def update_router(self, context, router_id, router):
+        LOG.debug(_("NECPluginV2.update_router() called, "
+                    "id=%(id)s, router=%(router)s ."),
+                  dict(id=router_id, router=router))
+
+        with context.session.begin(subtransactions=True):
+            #check if route exists and have permission to access
+            old_router = super(NECPluginV2, self).get_router(
+                context, router_id)
+            driver = self._get_router_driver_by_id(context, router_id)
+            self._check_external_gateway_info(router['router'], driver)
+            new_router = super(NECPluginV2, self).update_router(
+                context, router_id, router)
+            self._extend_router_dict_flavor(context, new_router)
+            driver.update_router(context, router_id,
+                                 old_router, new_router)
+        return new_router
+
+    def delete_router(self, context, router_id):
+        LOG.debug(_("NECPluginV2.delete_router() called, id=%s."), router_id)
+
+        router = super(NECPluginV2, self).get_router(context, router_id)
+        tenant_id = router['tenant_id']
+        # TODO(amotoki): Needs to be wrapped with a session
+        self._check_router_in_use(context, router_id)
+        driver = self._get_router_driver_by_id(context, router_id)
+        super(NECPluginV2, self).delete_router(context, router_id)
+        # TODO(amotoki): nec_router.delete_router should be called before
+        # removing the router from the database?
+        driver.delete_router(context, router_id, router)
+        self._cleanup_ofc_tenant(context, tenant_id)
+
+    def get_router(self, context, id, fields=None):
+        router = super(NECPluginV2, self).get_router(context, id, fields)
+        return self._extend_router_dict_flavor(context, router)
+
+    def get_routers(self, context, filters=None, fields=None):
+        with context.session.begin(subtransactions=True):
+            routers = super(NECPluginV2, self).get_routers(context, filters,
+                                                           fields)
+            for router in routers:
+                self._extend_router_dict_flavor(context, router)
+        return routers
+
+    def add_router_interface(self, context, router_id, interface_info):
+        LOG.debug(_("NECPluginV2.add_router_interface() called, "
+                    "id=%(id)s, interface=%(interface)s."),
+                  dict(id=router_id, interface=interface_info))
+        # Create intreface on DB
+        # NOTE: policy check is done in super().add_router_interface()
+        new_interface = super(NECPluginV2, self).add_router_interface(
+            context, router_id, interface_info)
+        port_id = new_interface['port_id']
+        port = self._get_port(context, port_id)
+        subnet = self._get_subnet(context, new_interface['subnet_id'])
+        port_info = {'network_id': port['network_id'],
+                     'ip_address': port['fixed_ips'][0]['ip_address'],
+                     'cidr': subnet['cidr'],
+                     'mac_address': port['mac_address']}
+
+        driver = self._get_router_driver_by_id(context, router_id)
+        result = driver.add_interface(context, router_id, port_id, port_info)
+        if result:
+            new_status = nec_router.STATUS_ACTIVE
+        else:
+            new_status = nec_router.STATUS_ERROR
+        self._update_resource_status(context, "port", port_id, new_status)
+        return new_interface
+
+    def remove_router_interface(self, context, router_id, interface_info):
+        LOG.debug(_("NECPluginV2.remove_router_interface() called, "
+                    "id=%(id)s, interface=%(interface)s."),
+                  dict(id=router_id, interface=interface_info))
+
+        port_info = self._check_router_interface_port(context, router_id,
+                                                      interface_info)
+        driver = self._get_router_driver_by_id(context, router_id)
+
+        driver.delete_interface(context, router_id, port_info['id'], port_info)
+        # NOTE: If driver.delete_interface fails, raise an exception.
+        # delete_port below is called only when delete_interface succeeds.
+        return super(NECPluginV2, self).remove_router_interface(
+            context, router_id, interface_info)
+
+    def _check_router_in_use(self, context, router_id):
+        # Ensure that the router is not used
+        router_filter = {'router_id': [router_id]}
+        fips = self.get_floatingips_count(context.elevated(),
+                                          filters=router_filter)
+        if fips:
+            raise l3.RouterInUse(router_id=router_id)
+
+        device_filter = {'device_id': [router_id],
+                         'device_owner': [l3_db.DEVICE_OWNER_ROUTER_INTF]}
+        ports = self.get_ports_count(context.elevated(),
+                                     filters=device_filter)
+        if ports:
+            raise l3.RouterInUse(router_id=id)
+
+    def _check_external_gateway_info(self, router, driver):
+        """Check if external network is specified.
+
+        The router implementation by PFC does not support the external network.
+        If the external network is specified this method raises an exception.
+        """
+        if not driver.support_external_network:
+            gw_info = router.get('external_gateway_info')
+            if gw_info and gw_info.get('network_id'):
+                raise nexc.RouterExternalGatewayNotSupported(
+                    flavor=nec_router.FLAVOR_OPENFLOW)
+
+    def _get_sync_routers(self, context, router_ids=None, active=None):
+        """Query routers and their gw ports for l3 agent.
+
+        The difference from the superclass in l3_db is that this method
+        only lists routers hosted on l3-agents.
+        """
+        router_list = super(NECPluginV2, self)._get_sync_routers(
+            context, router_ids, active)
+        if router_list:
+            _router_ids = [r['id'] for r in router_list]
+            agent_routers = rdb.get_routers_by_flavor(
+                context.session, 'l3-agent',
+                router_ids=_router_ids)
+            router_list = [r for r in router_list
+                           if r['id'] in agent_routers]
+        return router_list
+
+    def _get_router_driver_by_id(self, context, router_id):
+        flavor = self._get_flavor_by_router_id(context, router_id)
+        return nec_router.get_driver_by_flavor(flavor)
+
+    def _get_flavor_by_router_id(self, context, router_id):
+        return rdb.get_flavor_by_router(context.session, router_id)
+
+    def _extend_router_dict_flavor(self, context, router):
+        flavor = self._get_flavor_by_router_id(context, router['id'])
+        router[ext_flavor.FLAVOR_ROUTER] = flavor
+        return router
+
+    def auto_schedule_routers(self, context, host, router_ids):
+        router_ids = rdb.get_routers_by_flavor(
+            context.session, nconst.ROUTER_FLAVOR_L3AGENT, router_ids)
+        # If no l3-agent hosted router, there is no need to schedule.
+        if not router_ids:
+            return
+        super(NECPluginV2, self).auto_schedule_routers(context, host,
+                                                       router_ids)
+
+    def schedule_router(self, context, router):
+        if (self._get_flavor_by_router_id(context, router) ==
+            nconst.ROUTER_FLAVOR_L3AGENT):
+            super(NECPluginV2, self).schedule_router(context, router)
+
+    def add_router_to_l3_agent(self, context, id, router_id):
+        flavor = self._get_flavor_by_router_id(context, router_id)
+        if flavor != nconst.ROUTER_FLAVOR_L3AGENT:
+            raise nexc.RouterProviderMismatch(
+                router_id=router_id, flavor=flavor,
+                expected_flavor=nconst.ROUTER_FLAVOR_L3AGENT)
+        super(NECPluginV2, self).add_router_to_l3_agent(context, id, router_id)
+
 
 class NECPluginV2AgentNotifierApi(proxy.RpcProxy,
                                   sg_rpc.SecurityGroupAgentRpcApiMixin):
@@ -443,6 +674,23 @@ class NECPluginV2AgentNotifierApi(proxy.RpcProxy,
                          self.make_msg('port_update',
                                        port=port),
                          topic=self.topic_port_update)
+
+
+class L3AgentNotifyAPI(l3_rpc_agent_api.L3AgentNotifyAPI):
+
+    def _notification(self, context, method, router_ids, operation, data):
+        """Notify all the agents that are hosting the routers.
+
+        _notication() is called in L3 db plugin for all routers regardless
+        the routers are hosted on l3 agents or not. When the routers are
+        not hosted on l3 agents, there is no need to notify.
+        This method filters routers not hosted by l3 agents.
+        """
+        router_ids = rdb.get_routers_by_flavor(context.session,
+                                               nconst.ROUTER_FLAVOR_L3AGENT,
+                                               router_ids)
+        super(L3AgentNotifyAPI, self)._notification(
+            context, method, router_ids, operation, data)
 
 
 class DhcpRpcCallback(dhcp_rpc_base.DhcpRpcCallbackMixin):
