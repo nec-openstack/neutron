@@ -28,7 +28,6 @@ from webob import exc
 import webtest
 
 from neutron.api import extensions
-from neutron.api.rpc.agentnotifiers import l3_rpc_agent_api
 from neutron.api.v2 import attributes
 from neutron.common import config
 from neutron.common import constants as l3_constants
@@ -1283,7 +1282,7 @@ class L3NatDBTestCase(L3NatTestCaseBase):
                     found = True
         self.assertTrue(found)
 
-    def _test_floatingip_with_invalid_create_port(self, plugin_class):
+    def _test_floatingip_with_invalid_create_port(self, plugin):
         with self.port() as p:
             private_sub = {'subnet': {'id':
                                       p['port']['fixed_ips'][0]['subnet_id']}}
@@ -1299,7 +1298,7 @@ class L3NatDBTestCase(L3NatTestCaseBase):
                     private_sub['subnet']['id'],
                     None)
 
-                with mock.patch(plugin_class + '.create_port') as createport:
+                with mock.patch.object(plugin, 'create_port') as createport:
                     createport.return_value = {'fixed_ips': []}
                     res = self._create_floatingip(
                         self.fmt, public_sub['subnet']['network_id'],
@@ -1314,8 +1313,8 @@ class L3NatDBTestCase(L3NatTestCaseBase):
                     self._delete('routers', r['router']['id'])
 
     def test_floatingip_with_invalid_create_port(self):
-        self._test_floatingip_with_invalid_create_port(
-            'neutron.db.db_base_plugin_v2.NeutronDbPluginV2')
+        plugin = NeutronManager.get_plugin()
+        self._test_floatingip_with_invalid_create_port(plugin)
 
     def test_create_floatingip_no_ext_gateway_return_404(self):
         with self.subnet() as public_sub:
@@ -1571,18 +1570,19 @@ class L3NatDBTestCase(L3NatTestCaseBase):
     def _test_notify_op_agent(self, target_func, *args):
         l3_rpc_agent_api_str = (
             'neutron.api.rpc.agentnotifiers.l3_rpc_agent_api.L3AgentNotifyAPI')
-        oldNotify = l3_rpc_agent_api.L3AgentNotify
+        plugin = NeutronManager.get_plugin()
+        oldNotify = plugin.l3_rpc_notifier
         try:
             with mock.patch(l3_rpc_agent_api_str) as notifyApi:
-                l3_rpc_agent_api.L3AgentNotify = notifyApi
+                plugin.l3_rpc_notifier = notifyApi
                 kargs = [item for item in args]
                 kargs.append(notifyApi)
                 target_func(*kargs)
         except Exception:
-            l3_rpc_agent_api.L3AgentNotify = oldNotify
+            plugin.l3_rpc_notifier = oldNotify
             raise
         else:
-            l3_rpc_agent_api.L3AgentNotify = oldNotify
+            plugin.l3_rpc_notifier = oldNotify
 
     def _test_router_gateway_op_agent(self, notifyApi):
         with self.router() as r:

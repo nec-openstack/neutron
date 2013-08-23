@@ -19,6 +19,7 @@ from oslo.config import cfg
 
 from neutron.agent.common import config
 from neutron.openstack.common import rpc  # noqa
+from neutron.plugins.nec.common import constants as nconst
 
 
 ovs_opts = [
@@ -49,10 +50,18 @@ ofc_opts = [
                help=_("Certificate file")),
 ]
 
+flavor_opts = [
+    cfg.StrOpt('default_router_flavor', default=nconst.DEFAULT_ROUTER_FLAVOR,
+               help=_('Default router flavor to use.')),
+    cfg.ListOpt('router_flavors', default=nconst.DEFAULT_ROUTER_FLAVORS,
+                help=_('List of enabled router flavors.'))
+]
+
 
 cfg.CONF.register_opts(ovs_opts, "OVS")
 cfg.CONF.register_opts(agent_opts, "AGENT")
 cfg.CONF.register_opts(ofc_opts, "OFC")
+cfg.CONF.register_opts(flavor_opts, "FLAVOR")
 config.register_agent_state_opts_helper(cfg.CONF)
 config.register_root_helper(cfg.CONF)
 
@@ -61,3 +70,4 @@ CONF = cfg.CONF
 OVS = cfg.CONF.OVS
 AGENT = cfg.CONF.AGENT
 OFC = cfg.CONF.OFC
+FLAVOR = cfg.CONF.FLAVOR
