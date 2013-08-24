@@ -42,19 +42,19 @@ class PortInfoNotFound(qexc.NotFound):
 
 
 class RouterExternalGatewayNotSupported(qexc.BadRequest):
-    message = _("Router (flavor=%(flavor)s) does not support "
+    message = _("Router (provider=%(provider)s) does not support "
                 "an external network")
 
 
-class FlavorNotFound(qexc.NotFound):
-    message = _("Flavor %(flavor)s could not be found")
+class ProviderNotFound(qexc.NotFound):
+    message = _("Provider %(provider)s could not be found")
 
 
 class RouterOverLimit(qexc.Conflict):
-    message = _("Cannot create no more routers with flavor=%(flavor)s")
+    message = _("Cannot create no more routers with provider=%(provider)s")
 
 
 class RouterProviderMismatch(qexc.Conflict):
-    message = _("Provider of Router %(router_id)s is %(flavor)s. "
+    message = _("Provider of Router %(router_id)s is %(provider)s. "
                 "This operation is supported only for router provider "
-                "%(expected_flavor).")
+                "%(expected_provider).")

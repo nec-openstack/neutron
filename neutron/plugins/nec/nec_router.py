@@ -29,13 +29,13 @@ from neutron.plugins.nec.common import exceptions as nexc
 
 LOG = logging.getLogger(__name__)
 
-FLAVOR_L3AGENT = nconst.ROUTER_FLAVOR_L3AGENT
-FLAVOR_OPENFLOW = nconst.ROUTER_FLAVOR_OPENFLOW
+PROVIDER_L3AGENT = nconst.ROUTER_PROVIDER_L3AGENT
+PROVIDER_OPENFLOW = nconst.ROUTER_PROVIDER_OPENFLOW
 
 ROUTER_DRIVER_PATH = 'neutron.plugins.nec.nec_router.%s'
 ROUTER_DRIVER_MAP = {
-    FLAVOR_L3AGENT: ROUTER_DRIVER_PATH % 'RouterL3AgentDriver',
-    FLAVOR_OPENFLOW: ROUTER_DRIVER_PATH % 'RouterOpenFlowDriver'}
+    PROVIDER_L3AGENT: ROUTER_DRIVER_PATH % 'RouterL3AgentDriver',
+    PROVIDER_OPENFLOW: ROUTER_DRIVER_PATH % 'RouterOpenFlowDriver'}
 
 ROUTER_DRIVERS = {}
 
@@ -45,54 +45,55 @@ STATUS_ERROR = nconst.ROUTER_STATUS_ERROR
 
 def load_driver(ofc_manager):
 
-    if (FLAVOR_OPENFLOW in ROUTER_DRIVER_MAP and
+    if (PROVIDER_OPENFLOW in ROUTER_DRIVER_MAP and
         not ofc_manager.driver.router_supported()):
-        LOG.warning(_('OFC does not support router with flavor=%(flavor)s, '
-                      'so removed it from supported flavor '
-                      '(new router driver map=%(driver_map)s)'),
-                    {'flavor': FLAVOR_OPENFLOW,
-                     'driver_map': ROUTER_DRIVER_MAP})
-        del ROUTER_DRIVER_MAP[FLAVOR_OPENFLOW]
+        LOG.warning(
+            _('OFC does not support router with provider=%(provider)s, '
+              'so removed it from supported provider '
+              '(new router driver map=%(driver_map)s)'),
+            {'provider': PROVIDER_OPENFLOW,
+             'driver_map': ROUTER_DRIVER_MAP})
+        del ROUTER_DRIVER_MAP[PROVIDER_OPENFLOW]
 
-    if config.FLAVOR.default_router_flavor not in ROUTER_DRIVER_MAP:
-        LOG.error(_('default_router_flavor %(default)s is supported! '
+    if config.PROVIDER.default_router_provider not in ROUTER_DRIVER_MAP:
+        LOG.error(_('default_router_provider %(default)s is supported! '
                     'Please specify one of %(supported)s'),
-                  {'default': config.FLAVOR.default_router_flavor,
+                  {'default': config.PROVIDER.default_router_provider,
                    'supported': ROUTER_DRIVER_MAP.keys()})
         sys.exit(1)
 
-    enabled_flavors = (set(config.FLAVOR.router_flavors +
-                           [config.FLAVOR.default_router_flavor]) &
-                       set(ROUTER_DRIVER_MAP.keys()))
+    enabled_providers = (set(config.PROVIDER.router_providers +
+                             [config.PROVIDER.default_router_provider]) &
+                         set(ROUTER_DRIVER_MAP.keys()))
 
-    for driver in enabled_flavors:
+    for driver in enabled_providers:
         driver_klass = importutils.import_class(ROUTER_DRIVER_MAP[driver])
         ROUTER_DRIVERS[driver] = driver_klass(ofc_manager)
 
     LOG.info(_('Enabled router drivers: %s'), ROUTER_DRIVERS.keys())
 
     if not ROUTER_DRIVERS:
-        LOG.error(_('No router flavor is enabled. neutron-server terminated!'
+        LOG.error(_('No router provider is enabled. neutron-server terminated!'
                     ' (supported=%(supported)s, configured=%(config)s)'),
                   {'supported': ROUTER_DRIVER_MAP.keys(),
-                   'config': config.FLAVOR.router_flavors})
+                   'config': config.PROVIDER.router_providers})
         sys.exit(1)
 
 
-def get_flavor_with_default(flavor):
-    if not attr.is_attr_set(flavor):
-        flavor = config.FLAVOR.default_router_flavor
-    elif flavor not in ROUTER_DRIVERS:
-        raise nexc.FlavorNotFound(flavor=flavor)
-    return flavor
+def get_provider_with_default(provider):
+    if not attr.is_attr_set(provider):
+        provider = config.PROVIDER.default_router_provider
+    elif provider not in ROUTER_DRIVERS:
+        raise nexc.ProviderNotFound(provider=provider)
+    return provider
 
 
-def get_driver_by_flavor(flavor):
-    if flavor is None:
-        flavor = config.FLAVOR.default_router_flavor
-    elif flavor not in ROUTER_DRIVERS:
-        raise nexc.FlavorNotFound(flavor=flavor)
-    return ROUTER_DRIVERS[flavor]
+def get_driver_by_provider(provider):
+    if provider is None:
+        provider = config.PROVIDER.default_router_provider
+    elif provider not in ROUTER_DRIVERS:
+        raise nexc.ProviderNotFound(provider=provider)
+    return ROUTER_DRIVERS[provider]
 
 
 class RouterDriverBase(object):
@@ -164,7 +165,7 @@ class RouterOpenFlowDriver(RouterDriverBase):
         except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
             if (isinstance(exc, nexc.OFCException) and
                 exc.status == httplib.CONFLICT):
-                raise nexc.RouterOverLimit(flavor=FLAVOR_OPENFLOW)
+                raise nexc.RouterOverLimit(provider=PROVIDER_OPENFLOW)
             else:
                 reason = _("create_router() failed due to %s") % exc
                 LOG.error(reason)
