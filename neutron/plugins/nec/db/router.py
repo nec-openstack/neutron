@@ -26,67 +26,68 @@ LOG = logging.getLogger(__name__)
 
 
 class RouterProvider(models_v2.model_base.BASEV2):
-    """Represents a binding of router_id to flavor."""
-    flavor = sa.Column(sa.String(255))
+    """Represents a binding of router_id to provider."""
+    provider = sa.Column(sa.String(255))
     router_id = sa.Column(sa.String(36), sa.ForeignKey('routers.id',
                                                        ondelete="CASCADE"),
                           primary_key=True)
 
     router = orm.relationship(l3_db.Router, uselist=False)
     #router = orm.relationship(l3_db.Router, uselist=False,
-    #                          backref=orm.backref('flavor', uselist=False,
+    #                          backref=orm.backref('provider', uselist=False,
     #                                              cascade='delete'))
 
     def __repr__(self):
-        return "<RouterProvider(%s,%s)>" % (self.flavor, self.router_id)
+        return "<RouterProvider(%s,%s)>" % (self.provider, self.router_id)
 
 
-def _get_router_flavors_query(query, flavor=None, router_ids=None):
-    if flavor:
-        query = query.filter_by(flavor=flavor)
+def _get_router_providers_query(query, provider=None, router_ids=None):
+    if provider:
+        query = query.filter_by(provider=provider)
     if router_ids:
         column = RouterProvider.router_id
         query = query.filter(column.in_(router_ids))
     return query
 
 
-def get_router_flavors(session, flavor=None, router_ids=None):
-    """Retrieve a list of a pair of router ID and its flavor."""
+def get_router_providers(session, provider=None, router_ids=None):
+    """Retrieve a list of a pair of router ID and its provider."""
     query = session.query(RouterProvider)
-    query = _get_router_flavors_query(query, flavor, router_ids)
-    return [{'flavor': x.flavor, 'router_id': x.router_id}
+    query = _get_router_providers_query(query, provider, router_ids)
+    return [{'provider': x.provider, 'router_id': x.router_id}
             for x in query]
 
 
-def get_routers_by_flavor(session, flavor, router_ids=None):
-    """Retrieve a list of router IDs with the given flavor."""
+def get_routers_by_provider(session, provider, router_ids=None):
+    """Retrieve a list of router IDs with the given provider."""
     query = session.query(RouterProvider.router_id)
-    query = _get_router_flavors_query(query, flavor, router_ids)
+    query = _get_router_providers_query(query, provider, router_ids)
     return [x[0] for x in query]
 
 
-def get_router_count_by_flavor(session, flavor, tenant_id=None):
-    query = session.query(RouterProvider).filter_by(flavor=flavor)
+def get_router_count_by_provider(session, provider, tenant_id=None):
+    query = session.query(RouterProvider).filter_by(provider=provider)
     if tenant_id:
         query = (query.join('router').
                  filter(l3_db.Router.tenant_id == tenant_id))
     return query.count()
 
 
-def get_flavor_by_router(session, router_id):
-    """Retrieve a flavor of the given router."""
+def get_provider_by_router(session, router_id):
+    """Retrieve a provider of the given router."""
     try:
         binding = (session.query(RouterProvider).
                    filter_by(router_id=router_id).
                    one())
     except sa_exc.NoResultFound:
         return None
-    return binding.flavor
+    return binding.provider
 
 
-def add_router_flavor_binding(session, flavor, router_id):
-    LOG.debug(_("Add flavor binding (router=%(router_id)s, flavor=%(flavor)s"),
-              {'router_id': router_id, 'flavor': flavor})
-    binding = RouterProvider(flavor=flavor, router_id=router_id)
+def add_router_provider_binding(session, provider, router_id):
+    LOG.debug(_("Add provider binding "
+                "(router=%(router_id)s, provider=%(provider)s"),
+              {'router_id': router_id, 'provider': provider})
+    binding = RouterProvider(provider=provider, router_id=router_id)
     session.add(binding)
     return binding

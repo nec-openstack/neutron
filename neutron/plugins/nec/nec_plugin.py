@@ -34,7 +34,6 @@ from neutron.db import l3_rpc_base
 from neutron.db import portbindings_base
 from neutron.db import quota_db  # noqa
 from neutron.db import securitygroups_rpc_base as sg_db_rpc
-from neutron.extensions import flavor as ext_flavor
 from neutron.extensions import l3
 from neutron.extensions import portbindings
 from neutron.openstack.common import importutils
@@ -47,6 +46,7 @@ from neutron.plugins.nec.common import constants as nconst
 from neutron.plugins.nec.common import exceptions as nexc
 from neutron.plugins.nec.db import api as ndb
 from neutron.plugins.nec.db import router as rdb
+from neutron.plugins.nec.extensions import router_provider as ext_provider
 from neutron.plugins.nec import nec_router
 from neutron.plugins.nec import ofc_manager
 from neutron.plugins.nec import packet_filter
@@ -79,11 +79,11 @@ class NECPluginV2(db_base_plugin_v2.NeutronDbPluginV2,
                                     "dhcp_agent_scheduler",
                                     "ext-gw-mode",
                                     "extraroute",
-                                    "flavor",
                                     "l3_agent_scheduler",
                                     "packet-filter",
                                     "quotas",
                                     "router",
+                                    "router_provider",
                                     "security-group",
                                     ]
 
@@ -155,9 +155,9 @@ class NECPluginV2(db_base_plugin_v2.NeutronDbPluginV2,
         filters = dict(tenant_id=[tenant_id])
         if self.get_networks_count(context, filters=filters):
             return True
-        if rdb.get_router_count_by_flavor(context.session,
-                                          nec_router.FLAVOR_OPENFLOW,
-                                          tenant_id):
+        if rdb.get_router_count_by_provider(context.session,
+                                            nec_router.PROVIDER_OPENFLOW,
+                                            tenant_id):
             return True
         return False
 
@@ -467,18 +467,18 @@ class NECPluginV2(db_base_plugin_v2.NeutronDbPluginV2,
         # At the moment the default security group needs to be created
         # when the first network is created for the tenant.
 
-        flavor = nec_router.get_flavor_with_default(
-            router['router'].get(ext_flavor.FLAVOR_ROUTER))
-        driver = nec_router.get_driver_by_flavor(flavor)
+        provider = nec_router.get_provider_with_default(
+            router['router'].get(ext_provider.ROUTER_PROVIDER))
+        driver = nec_router.get_driver_by_provider(provider)
 
         self._check_external_gateway_info(router['router'], driver)
 
         with context.session.begin(subtransactions=True):
             new_router = super(NECPluginV2, self).create_router(context,
                                                                 router)
-            rdb.add_router_flavor_binding(context.session,
-                                          flavor, str(new_router['id']))
-            self._extend_router_dict_flavor(context, new_router)
+            rdb.add_router_provider_binding(context.session,
+                                            provider, str(new_router['id']))
+            self._extend_router_dict_provider(context, new_router)
 
         # create router on the network controller
         try:
@@ -507,7 +507,7 @@ class NECPluginV2(db_base_plugin_v2.NeutronDbPluginV2,
             self._check_external_gateway_info(router['router'], driver)
             new_router = super(NECPluginV2, self).update_router(
                 context, router_id, router)
-            self._extend_router_dict_flavor(context, new_router)
+            self._extend_router_dict_provider(context, new_router)
             driver.update_router(context, router_id,
                                  old_router, new_router)
         return new_router
@@ -528,14 +528,14 @@ class NECPluginV2(db_base_plugin_v2.NeutronDbPluginV2,
 
     def get_router(self, context, id, fields=None):
         router = super(NECPluginV2, self).get_router(context, id, fields)
-        return self._extend_router_dict_flavor(context, router)
+        return self._extend_router_dict_provider(context, router)
 
     def get_routers(self, context, filters=None, fields=None):
         with context.session.begin(subtransactions=True):
             routers = super(NECPluginV2, self).get_routers(context, filters,
                                                            fields)
             for router in routers:
-                self._extend_router_dict_flavor(context, router)
+                self._extend_router_dict_provider(context, router)
         return routers
 
     def add_router_interface(self, context, router_id, interface_info):
@@ -603,7 +603,7 @@ class NECPluginV2(db_base_plugin_v2.NeutronDbPluginV2,
             gw_info = router.get('external_gateway_info')
             if gw_info and gw_info.get('network_id'):
                 raise nexc.RouterExternalGatewayNotSupported(
-                    flavor=nec_router.FLAVOR_OPENFLOW)
+                    provider=nec_router.PROVIDER_OPENFLOW)
 
     def _get_sync_routers(self, context, router_ids=None, active=None):
         """Query routers and their gw ports for l3 agent.
@@ -615,7 +615,7 @@ class NECPluginV2(db_base_plugin_v2.NeutronDbPluginV2,
             context, router_ids, active)
         if router_list:
             _router_ids = [r['id'] for r in router_list]
-            agent_routers = rdb.get_routers_by_flavor(
+            agent_routers = rdb.get_routers_by_provider(
                 context.session, 'l3-agent',
                 router_ids=_router_ids)
             router_list = [r for r in router_list
@@ -623,20 +623,20 @@ class NECPluginV2(db_base_plugin_v2.NeutronDbPluginV2,
         return router_list
 
     def _get_router_driver_by_id(self, context, router_id):
-        flavor = self._get_flavor_by_router_id(context, router_id)
-        return nec_router.get_driver_by_flavor(flavor)
+        provider = self._get_provider_by_router_id(context, router_id)
+        return nec_router.get_driver_by_provider(provider)
 
-    def _get_flavor_by_router_id(self, context, router_id):
-        return rdb.get_flavor_by_router(context.session, router_id)
+    def _get_provider_by_router_id(self, context, router_id):
+        return rdb.get_provider_by_router(context.session, router_id)
 
-    def _extend_router_dict_flavor(self, context, router):
-        flavor = self._get_flavor_by_router_id(context, router['id'])
-        router[ext_flavor.FLAVOR_ROUTER] = flavor
+    def _extend_router_dict_provider(self, context, router):
+        provider = self._get_provider_by_router_id(context, router['id'])
+        router[ext_provider.ROUTER_PROVIDER] = provider
         return router
 
     def auto_schedule_routers(self, context, host, router_ids):
-        router_ids = rdb.get_routers_by_flavor(
-            context.session, nconst.ROUTER_FLAVOR_L3AGENT, router_ids)
+        router_ids = rdb.get_routers_by_provider(
+            context.session, nconst.ROUTER_PROVIDER_L3AGENT, router_ids)
         # If no l3-agent hosted router, there is no need to schedule.
         if not router_ids:
             return
@@ -644,16 +644,16 @@ class NECPluginV2(db_base_plugin_v2.NeutronDbPluginV2,
                                                        router_ids)
 
     def schedule_router(self, context, router):
-        if (self._get_flavor_by_router_id(context, router) ==
-            nconst.ROUTER_FLAVOR_L3AGENT):
+        if (self._get_provider_by_router_id(context, router) ==
+            nconst.ROUTER_PROVIDER_L3AGENT):
             super(NECPluginV2, self).schedule_router(context, router)
 
     def add_router_to_l3_agent(self, context, id, router_id):
-        flavor = self._get_flavor_by_router_id(context, router_id)
-        if flavor != nconst.ROUTER_FLAVOR_L3AGENT:
+        provider = self._get_provider_by_router_id(context, router_id)
+        if provider != nconst.ROUTER_PROVIDER_L3AGENT:
             raise nexc.RouterProviderMismatch(
-                router_id=router_id, flavor=flavor,
-                expected_flavor=nconst.ROUTER_FLAVOR_L3AGENT)
+                router_id=router_id, provider=provider,
+                expected_provider=nconst.ROUTER_PROVIDER_L3AGENT)
         super(NECPluginV2, self).add_router_to_l3_agent(context, id, router_id)
 
 
@@ -686,9 +686,8 @@ class L3AgentNotifyAPI(l3_rpc_agent_api.L3AgentNotifyAPI):
         not hosted on l3 agents, there is no need to notify.
         This method filters routers not hosted by l3 agents.
         """
-        router_ids = rdb.get_routers_by_flavor(context.session,
-                                               nconst.ROUTER_FLAVOR_L3AGENT,
-                                               router_ids)
+        router_ids = rdb.get_routers_by_provider(
+            context.session, nconst.ROUTER_PROVIDER_L3AGENT, router_ids)
         super(L3AgentNotifyAPI, self)._notification(
             context, method, router_ids, operation, data)
 
