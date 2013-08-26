@@ -32,10 +32,10 @@ class RouterProvider(models_v2.model_base.BASEV2):
                                                        ondelete="CASCADE"),
                           primary_key=True)
 
-    router = orm.relationship(l3_db.Router, uselist=False)
-    #router = orm.relationship(l3_db.Router, uselist=False,
-    #                          backref=orm.backref('provider', uselist=False,
-    #                                              cascade='delete'))
+    # router = orm.relationship(l3_db.Router, uselist=False)
+    router = orm.relationship(l3_db.Router, uselist=False,
+                              backref=orm.backref('provider', uselist=False,
+                                                  cascade='delete'))
 
     def __repr__(self):
         return "<RouterProvider(%s,%s)>" % (self.provider, self.router_id)
