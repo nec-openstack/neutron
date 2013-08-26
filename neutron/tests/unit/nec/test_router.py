@@ -16,6 +16,7 @@
 import mock
 
 from neutron import manager
+from neutron.plugins.nec.common import config
 from neutron.tests.unit.nec import test_nec_plugin
 from neutron.tests.unit import test_extension_extraroute as test_ext_route
 
@@ -39,6 +40,9 @@ class NecRouterTestCaseSkipFloatingIp(object):
         self.skipTest('No external gateway support')
 
     def test_router_delete_with_floatingip_existed_returns_409(self):
+        self.skipTest('No external gateway support')
+
+    def test_floatingip_with_invalid_create_port(self):
         self.skipTest('No external gateway support')
 
     def test_router_update_gateway(self):
@@ -122,4 +126,8 @@ class NecRouterL3AgentTestCase(test_ext_route.ExtraRouteDBTestCase):
 
 class NecRouterOpenFlowTestCase(NecRouterTestCaseSkipFloatingIp,
                                 NecRouterL3AgentTestCase):
-    pass
+
+    def setUp(self):
+        config.CONF.set_override('default_router_provider',
+                                 'openflow', 'PROVIDER')
+        super(NecRouterOpenFlowTestCase, self).setUp()
