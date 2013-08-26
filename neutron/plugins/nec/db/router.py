@@ -28,13 +28,14 @@ LOG = logging.getLogger(__name__)
 class RouterProvider(models_v2.model_base.BASEV2):
     """Represents a binding of router_id to provider."""
     provider = sa.Column(sa.String(255))
-    router_id = sa.Column(sa.String(36), sa.ForeignKey('routers.id',
-                                                       ondelete="CASCADE"),
+    router_id = sa.Column(sa.String(36),
+                          sa.ForeignKey('routers.id', ondelete="CASCADE"),
                           primary_key=True)
 
     # router = orm.relationship(l3_db.Router, uselist=False)
     router = orm.relationship(l3_db.Router, uselist=False,
                               backref=orm.backref('provider', uselist=False,
+                                                  lazy='joined',
                                                   cascade='delete'))
 
     def __repr__(self):
