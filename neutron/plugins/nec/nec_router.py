@@ -23,6 +23,7 @@ from neutron.api.v2 import attributes as attr
 from neutron.common import exceptions as q_exc
 from neutron.common import utils
 from neutron.db import agentschedulers_db
+from neutron.db import db_base_plugin_v2
 from neutron.db import extraroute_db
 from neutron.db import l3_db
 from neutron.db import l3_gwmode_db
@@ -76,7 +77,7 @@ class RouterMixin(extraroute_db.ExtraRoute_db_mixin,
                                                                 router)
             rdb.add_router_provider_binding(context.session,
                                             provider, str(new_router['id']))
-            self._extend_router_dict_provider(context, new_router)
+            self._extend_router_dict_provider(new_router, provider)
 
         # create router on the network controller
         try:
@@ -105,7 +106,6 @@ class RouterMixin(extraroute_db.ExtraRoute_db_mixin,
             self._check_external_gateway_info(router['router'], driver)
             new_router = super(RouterMixin, self).update_router(
                 context, router_id, router)
-            self._extend_router_dict_provider(context, new_router)
             driver.update_router(context, router_id,
                                  old_router, new_router)
         return new_router
@@ -122,18 +122,6 @@ class RouterMixin(extraroute_db.ExtraRoute_db_mixin,
         # removing the router from the database?
         driver.delete_router(context, router_id, router)
         self._cleanup_ofc_tenant(context, tenant_id)
-
-    def get_router(self, context, id, fields=None):
-        router = super(RouterMixin, self).get_router(context, id, fields)
-        return self._extend_router_dict_provider(context, router)
-
-    def get_routers(self, context, filters=None, fields=None):
-        with context.session.begin(subtransactions=True):
-            routers = super(RouterMixin, self).get_routers(context, filters,
-                                                           fields)
-            for router in routers:
-                self._extend_router_dict_provider(context, router)
-        return routers
 
     def add_router_interface(self, context, router_id, interface_info):
         LOG.debug(_("RouterMixin.add_router_interface() called, "
@@ -227,10 +215,19 @@ class RouterMixin(extraroute_db.ExtraRoute_db_mixin,
     def _get_provider_by_router_id(self, context, router_id):
         return rdb.get_provider_by_router(context.session, router_id)
 
-    def _extend_router_dict_provider(self, context, router):
-        provider = self._get_provider_by_router_id(context, router['id'])
-        router[ext_provider.ROUTER_PROVIDER] = provider
-        return router
+    def _extend_router_dict_provider(self, router_res, provider):
+        router_res[ext_provider.ROUTER_PROVIDER] = provider
+
+    def extend_router_dict_provider(self, router_res, router_db):
+        # NOTE: router_db.provider is None just after creating a router,
+        # so we need to skip setting router_provider here.
+        if not router_db.provider:
+            return
+        self._extend_router_dict_provider(router_res,
+                                          router_db.provider['provider'])
+
+    db_base_plugin_v2.NeutronDbPluginV2.register_dict_extend_funcs(
+        l3.ROUTERS, [extend_router_dict_provider])
 
 
 class L3AgentSchedulerDbMixin(agentschedulers_db.L3AgentSchedulerDbMixin):
