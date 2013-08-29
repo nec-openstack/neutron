@@ -233,7 +233,7 @@ class StubOFCDriver(ofc_driver_base.OFCDriverBase):
         LOG.debug('update_router_route: SUCCEED')
 
     def delete_router_interface(self, ofc_router_inf_id):
-        LOG.debug('add_router_interface (ofc_router_inf_id=%s)'
+        LOG.debug('delete_router_interface (ofc_router_inf_id=%s)'
                   % ofc_router_inf_id)
         if ofc_router_inf_id in self.ofc_router_inf_dict:
             del self.ofc_router_inf_dict[ofc_router_inf_id]
