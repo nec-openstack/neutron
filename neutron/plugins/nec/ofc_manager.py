@@ -50,10 +50,16 @@ class OFCManager(object):
                                                resource, neutron_id)
 
     def _add_ofc_item(self, context, resource, neutron_id, ofc_id):
+        LOG.debug('##### resoruce=%(resource)s, neutron_id=%(neutron_id)s, '
+                  'ofc_id=%(ofc_id)s', {'resource': resource,
+                                        'neutron_id': neutron_id,
+                                        'ofc_id': ofc_id})
         # Ensure a new item is added to the new mapping table
         ndb.add_ofc_item(context.session, resource, neutron_id, ofc_id)
 
     def _del_ofc_item(self, context, resource, neutron_id):
+        LOG.debug('##### resoruce=%(resource)s, neutron_id=%(neutron_id)s',
+                  {'resource': resource, 'neutron_id': neutron_id})
         ndb.del_ofc_item_lookup_both(context.session, resource, neutron_id)
 
     def ensure_ofc_tenant(self, context, tenant_id):
@@ -164,6 +170,9 @@ class OFCManager(object):
         self._del_ofc_item(context, "ofc_router", router_id)
 
     def add_ofc_router_interface(self, context, router_id, port_id, port):
+        LOG.debug('##### add_ofc_router_interface(): '
+                  'router_id=%(router_id)s '
+                  'port_id=%(port_id)s port=%(port)s', locals())
         # port must have the following fields:
         #   network_id, cidr, ip_address, mac_address
         ofc_router_id = self._get_ofc_id(context, "ofc_router", router_id)
@@ -178,6 +187,9 @@ class OFCManager(object):
         self._add_ofc_item(context, "ofc_port", port_id, ofc_inf_id)
 
     def delete_ofc_router_interface(self, context, router_id, port_id, port):
+        LOG.debug('##### delete_ofc_router_interface(): '
+                  'router_id=%(router_id)s '
+                  'port_id=%(port_id)s port=%(port)s', locals())
         # Use port mapping table to maintain an interface of OFC router
         ofc_inf_id = self._get_ofc_id(context, "ofc_port", port_id)
         self.driver.delete_router_interface(ofc_inf_id)
@@ -185,6 +197,8 @@ class OFCManager(object):
 
     def update_ofc_router_route(self, context, router_id,
                                 added_routes=[], removed_routes=[]):
+        LOG.debug('##### router_id=%(router_id)s added=%(added_routes)s '
+                  'removed=%(removed_routes)s', locals())
         ofc_router_id = self._get_ofc_id(context, "ofc_router", router_id)
         if removed_routes:
             ofc_routes = self.driver.list_router_routes(ofc_router_id)
@@ -194,9 +208,8 @@ class OFCManager(object):
             key = ','.join((r['destination'], r['nexthop']))
             if key not in route_dict:
                 LOG.warning('router route not found (router=%(id)s, '
-                            '%(dest)s, %(nexthop)si)',
-                            dict(id=router_id, destination=r['destination'],
-                                 nexthop=r['nexthop']))
+                            '%(route)s)',
+                            {'id': router_id, 'route': r})
                 continue
             route_id = route_dict[key]
             self.driver.delete_router_route(route_id)
