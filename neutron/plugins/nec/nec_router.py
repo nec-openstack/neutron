@@ -96,7 +96,7 @@ class RouterMixin(extraroute_db.ExtraRoute_db_mixin,
     def update_router(self, context, router_id, router):
         LOG.debug(_("RouterMixin.update_router() called, "
                     "id=%(id)s, router=%(router)s ."),
-                  dict(id=router_id, router=router))
+                  {'id': router_id, 'router': router})
 
         with context.session.begin(subtransactions=True):
             old_rtr_db = super(RouterMixin, self)._get_router(context,
@@ -354,13 +354,13 @@ class L3AgentSchedulerDbMixin(agentschedulers_db.L3AgentSchedulerDbMixin):
         # If no l3-agent hosted router, there is no need to schedule.
         if not router_ids:
             return
-        super(L3AgentSchedulerDbMixin, self).auto_schedule_routers(
+        return super(L3AgentSchedulerDbMixin, self).auto_schedule_routers(
             context, host, router_ids)
 
     def schedule_router(self, context, router):
         if (self._get_provider_by_router_id(context, router) ==
             nconst.ROUTER_PROVIDER_L3AGENT):
-            super(L3AgentSchedulerDbMixin, self).schedule_router(
+            return super(L3AgentSchedulerDbMixin, self).schedule_router(
                 context, router)
 
     def add_router_to_l3_agent(self, context, id, router_id):
@@ -369,7 +369,7 @@ class L3AgentSchedulerDbMixin(agentschedulers_db.L3AgentSchedulerDbMixin):
             raise nexc.RouterProviderMismatch(
                 router_id=router_id, provider=provider,
                 expected_provider=nconst.ROUTER_PROVIDER_L3AGENT)
-        super(L3AgentSchedulerDbMixin, self).add_router_to_l3_agent(
+        return super(L3AgentSchedulerDbMixin, self).add_router_to_l3_agent(
             context, id, router_id)
 
 

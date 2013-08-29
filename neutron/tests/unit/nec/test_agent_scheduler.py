@@ -15,41 +15,39 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import mox
-
-from neutron.plugins.nec.common import ofc_client
+from neutron.tests.unit.nec import helper
 from neutron.tests.unit.nec import test_nec_plugin
 from neutron.tests.unit.openvswitch import test_agent_scheduler
 
 
 class NecAgentSchedulerTestCase(
-    test_agent_scheduler.OvsAgentSchedulerTestCase):
+    test_agent_scheduler.OvsAgentSchedulerTestCase,
+    helper.NecPluginMockMixin):
+
     plugin_str = test_nec_plugin.PLUGIN_NAME
 
     def setUp(self):
+        self.patch_remote_calls(use_stop=True)
         super(NecAgentSchedulerTestCase, self).setUp()
-        self.mox = mox.Mox()
-        self.mox.StubOutWithMock(ofc_client.OFCClient, 'do_request')
-        self.addCleanup(self.mox.UnsetStubs)
 
 
 class NecDhcpAgentNotifierTestCase(
-    test_agent_scheduler.OvsDhcpAgentNotifierTestCase):
+    test_agent_scheduler.OvsDhcpAgentNotifierTestCase,
+    helper.NecPluginMockMixin):
+
     plugin_str = test_nec_plugin.PLUGIN_NAME
 
     def setUp(self):
+        self.patch_remote_calls(use_stop=True)
         super(NecDhcpAgentNotifierTestCase, self).setUp()
-        self.mox = mox.Mox()
-        self.mox.StubOutWithMock(ofc_client.OFCClient, 'do_request')
-        self.addCleanup(self.mox.UnsetStubs)
 
 
 class NecL3AgentNotifierTestCase(
-    test_agent_scheduler.OvsL3AgentNotifierTestCase):
+    test_agent_scheduler.OvsL3AgentNotifierTestCase,
+    helper.NecPluginMockMixin):
+
     plugin_str = test_nec_plugin.PLUGIN_NAME
 
     def setUp(self):
+        self.patch_remote_calls(use_stop=True)
         super(NecL3AgentNotifierTestCase, self).setUp()
-        self.mox = mox.Mox()
-        self.mox.StubOutWithMock(ofc_client.OFCClient, 'do_request')
-        self.addCleanup(self.mox.UnsetStubs)

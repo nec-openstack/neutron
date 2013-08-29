@@ -57,4 +57,4 @@ class RouterOverLimit(qexc.Conflict):
 class RouterProviderMismatch(qexc.Conflict):
     message = _("Provider of Router %(router_id)s is %(provider)s. "
                 "This operation is supported only for router provider "
-                "%(expected_provider).")
+                "%(expected_provider)s.")
