@@ -407,7 +407,7 @@ class L3_NAT_db_mixin(l3.RouterPluginBase):
                 raise l3.RouterInterfaceInUseByFloatingIP(
                     router_id=router_id, subnet_id=subnet_id)
 
-    def _check_router_interface_port(self, context, router_id, interface_info):
+    def remove_router_interface(self, context, router_id, interface_info):
         if not interface_info:
             msg = _("Either subnet_id or port_id must be specified")
             raise q_exc.BadRequest(resource='router', msg=msg)
@@ -425,18 +425,16 @@ class L3_NAT_db_mixin(l3.RouterPluginBase):
                         port_id=port_id,
                         subnet_id=interface_info['subnet_id'])
             subnet_id = port_db['fixed_ips'][0]['subnet_id']
+            subnet = self._get_subnet(context, subnet_id)
             self._confirm_router_interface_not_in_use(
                 context, router_id, subnet_id)
-            tenant_id = port_db['tenant_id']
-            network_id = port_db['network_id']
+            self.delete_port(context, port_db['id'], l3_port_check=False)
         elif 'subnet_id' in interface_info:
             subnet_id = interface_info['subnet_id']
             self._confirm_router_interface_not_in_use(context, router_id,
                                                       subnet_id)
 
             subnet = self._get_subnet(context, subnet_id)
-            network_id = subnet['network_id']
-            tenant_id = subnet['tenant_id']
             found = False
 
             try:
@@ -449,6 +447,7 @@ class L3_NAT_db_mixin(l3.RouterPluginBase):
                 for p in ports:
                     if p['fixed_ips'][0]['subnet_id'] == subnet_id:
                         port_id = p['id']
+                        self.delete_port(context, p['id'], l3_port_check=False)
                         found = True
                         break
             except exc.NoResultFound:
@@ -457,22 +456,12 @@ class L3_NAT_db_mixin(l3.RouterPluginBase):
             if not found:
                 raise l3.RouterInterfaceNotFoundForSubnet(router_id=router_id,
                                                           subnet_id=subnet_id)
-        return {'network_id': network_id,
-                'subnet_id': subnet_id,
-                'tenant_id': tenant_id,
-                'id': port_id}
-
-    def remove_router_interface(self, context, router_id, interface_info):
-        port_info = self._check_router_interface_port(context, router_id,
-                                                      interface_info)
-        self.delete_port(context, port_info['id'], l3_port_check=False)
-
         self.l3_rpc_notifier.routers_updated(
             context, [router_id], 'remove_router_interface')
         info = {'id': router_id,
-                'tenant_id': port_info['tenant_id'],
-                'port_id': port_info['id'],
-                'subnet_id': port_info['subnet_id']}
+                'tenant_id': subnet['tenant_id'],
+                'port_id': port_id,
+                'subnet_id': subnet_id}
         notifier_api.notify(context,
                             notifier_api.publisher_id('network'),
                             'router.interface.delete',
