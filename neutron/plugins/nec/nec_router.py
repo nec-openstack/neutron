@@ -149,7 +149,7 @@ class RouterMixin(extraroute_db.ExtraRoute_db_mixin,
     def add_router_interface(self, context, router_id, interface_info):
         LOG.debug(_("RouterMixin.add_router_interface() called, "
                     "id=%(id)s, interface=%(interface)s."),
-                  dict(id=router_id, interface=interface_info))
+                  {'id': router_id, 'interface': interface_info})
         new_interface = super(RouterMixin, self).add_router_interface(
             context, router_id, interface_info)
         port_id = new_interface['port_id']
@@ -176,7 +176,7 @@ class RouterMixin(extraroute_db.ExtraRoute_db_mixin,
     def remove_router_interface(self, context, router_id, interface_info):
         LOG.debug(_("RouterMixin.remove_router_interface() called, "
                     "id=%(id)s, interface=%(interface)s."),
-                  dict(id=router_id, interface=interface_info))
+                  {'id': router_id, 'interface': interface_info})
 
         port_info = self._check_router_interface_port(context, router_id,
                                                       interface_info)
@@ -275,8 +275,12 @@ class RouterMixin(extraroute_db.ExtraRoute_db_mixin,
     def _get_router_for_floatingip(self, context, internal_port,
                                    internal_subnet_id,
                                    external_network_id):
-        # OpenFlow vrouter does not support NAT, so we need to
-        # exclude them from routers for floating IP association.
+        """Get a router for a requested floating IP.
+
+        OpenFlow vrouter does not support NAT, so we need to exclude them
+        from candidate routers for floating IP association.
+        This method is called in l3_db.get_assoc_data().
+        """
         subnet_db = self._get_subnet(context, internal_subnet_id)
         if not subnet_db['gateway_ip']:
             msg = (_('Cannot add floating IP to port on subnet %s '
