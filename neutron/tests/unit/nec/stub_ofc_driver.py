@@ -29,6 +29,15 @@ MAX_NUM_OPENFLOW_ROUTER = 2
 
 
 class StubOFCDriver(ofc_driver_base.OFCDriverBase):
+    """ Stub OFC driver for testing.
+
+    This driver can be used not only for unit tests but also for real testing
+    as a logging driver. It stores the created resources on OFC and returns
+    them in get methods().
+
+    If autocheck is enabled, it checks whether the specified resource exists
+    in OFC and raises an exception if it is different from expected status.
+    """
 
     def __init__(self, conf):
         self.autocheck = False

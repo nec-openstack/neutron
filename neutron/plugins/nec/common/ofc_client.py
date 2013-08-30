@@ -46,12 +46,6 @@ class OFCClient(object):
         self.cert_file = cert_file
         self.connection = None
 
-    # def get_connection_type(self):
-    #     """Returns the proper connection type."""
-    #     if self.use_ssl:
-    #         return httplib.HTTPSConnection
-    #     else:
-    #         return httplib.HTTPConnection
     def get_connection(self):
         """Returns the proper connection."""
         if self.use_ssl:
@@ -70,7 +64,7 @@ class OFCClient(object):
 
     def _format_error_message(self, status, detail):
         detail = ' ' + detail if detail else ''
-        return (_("Operation on OFC is failed: %(status)s%(msg)s") %
+        return (_("Operation on OFC failed: %(status)s%(msg)s") %
                 {'status': status, 'msg': detail})
 
     def do_request(self, method, action, body=None):
@@ -102,10 +96,10 @@ class OFCClient(object):
                               httplib.NO_CONTENT):
                 return data
             else:
-                LOG.warning(_("Operation on OFC is failed: "
+                LOG.warning(_("Operation on OFC failed: "
                               "status=%(status), detail=%(detail)"),
                             {'status': res.status, 'detail': data})
-                params = {'reason': _("Operation on OFC is failed"),
+                params = {'reason': _("Operation on OFC failed"),
                           'status': res.status}
                 if isinstance(data, dict):
                     params['err_code'] = data.get('err_code')

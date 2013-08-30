@@ -292,7 +292,7 @@ class L3AgentNotifyAPI(l3_rpc_agent_api.L3AgentNotifyAPI):
     def _notification(self, context, method, router_ids, operation, data):
         """Notify all the agents that are hosting the routers.
 
-        _notication() is called in L3 db plugin for all routers regardless
+        _notification() is called in L3 db plugin for all routers regardless
         the routers are hosted on l3 agents or not. When the routers are
         not hosted on l3 agents, there is no need to notify.
         This method filters routers not hosted by l3 agents.

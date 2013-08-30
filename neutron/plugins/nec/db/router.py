@@ -26,13 +26,12 @@ LOG = logging.getLogger(__name__)
 
 
 class RouterProvider(models_v2.model_base.BASEV2):
-    """Represents a binding of router_id to provider."""
+    """ Represents a binding of router_id to provider. """
     provider = sa.Column(sa.String(255))
     router_id = sa.Column(sa.String(36),
                           sa.ForeignKey('routers.id', ondelete="CASCADE"),
                           primary_key=True)
 
-    # router = orm.relationship(l3_db.Router, uselist=False)
     router = orm.relationship(l3_db.Router, uselist=False,
                               backref=orm.backref('provider', uselist=False,
                                                   lazy='joined',
@@ -67,6 +66,7 @@ def get_routers_by_provider(session, provider, router_ids=None):
 
 
 def get_router_count_by_provider(session, provider, tenant_id=None):
+    """Return the number of routers with the given provider."""
     query = session.query(RouterProvider).filter_by(provider=provider)
     if tenant_id:
         query = (query.join('router').
@@ -86,6 +86,7 @@ def get_provider_by_router(session, router_id):
 
 
 def add_router_provider_binding(session, provider, router_id):
+    """Add a router provider association."""
     LOG.debug(_("Add provider binding "
                 "(router=%(router_id)s, provider=%(provider)s"),
               {'router_id': router_id, 'provider': provider})
