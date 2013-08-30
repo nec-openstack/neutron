@@ -27,9 +27,7 @@ class TremaDriverBase(ofc_driver_base.OFCDriverBase):
     networks_path = "/networks"
     network_path = "/networks/%s"
 
-    @classmethod
-    def router_supported(cls):
-        return False
+    router_supported = False
 
     def __init__(self, conf_ofc):
         # Trema sliceable REST API does not support HTTPS

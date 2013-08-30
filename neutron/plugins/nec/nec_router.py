@@ -15,7 +15,6 @@
 #    under the License.
 
 import abc
-import sys
 
 import httplib
 
@@ -71,27 +70,18 @@ class RouterMixin(extraroute_db.ExtraRoute_db_mixin,
         with context.session.begin(subtransactions=True):
             new_router = super(RouterMixin, self).create_router(context,
                                                                 router)
-            new_router['gw_port'] = self._get_gw_info(context,
-                                                      new_router['gw_port_id'])
+            new_router['gw_port'] = self._get_gw_port_detail(
+                context, driver, new_router['gw_port_id'])
             rdb.add_router_provider_binding(context.session,
                                             provider, str(new_router['id']))
             self._extend_router_dict_provider(new_router, provider)
 
         # create router on the network controller
         try:
-            driver.create_router(context, tenant_id, new_router)
-            new_status = nconst.ROUTER_STATUS_ACTIVE
-            self._update_resource_status(context, "router", new_router['id'],
-                                         new_status)
+            return driver.create_router(context, tenant_id, new_router)
         except nexc.RouterOverLimit:
             super(RouterMixin, self).delete_router(context, new_router['id'])
             raise
-        except (nexc.OFCException, nexc.OFCConsistencyBroken):
-            new_status = nconst.ROUTER_STATUS_ERROR
-            self._update_resource_status(context, "router", new_router['id'],
-                                         new_status)
-            raise
-        return new_router
 
     def update_router(self, context, router_id, router):
         LOG.debug(_("RouterMixin.update_router() called, "
@@ -99,48 +89,32 @@ class RouterMixin(extraroute_db.ExtraRoute_db_mixin,
                   {'id': router_id, 'router': router})
 
         with context.session.begin(subtransactions=True):
-            old_rtr_db = super(RouterMixin, self)._get_router(context,
-                                                              router_id)
-            old_rtr = super(RouterMixin, self)._make_router_dict(old_rtr_db)
-            self._check_router_gw_info(context, router_id, router, old_rtr_db)
-            gw_port_id = old_rtr_db['gw_port_id']
-            driver = self._get_router_driver_by_id(context, router_id)
-            if gw_port_id:
-                # Remove old gw_port first
-                driver.delete_interface(context, router_id, gw_port_id, None)
-            old_rtr['gw_port'] = self._get_gw_info(context, gw_port_id)
-            new_router = super(RouterMixin, self).update_router(
+            old_rtr = super(RouterMixin, self).get_router(context, router_id)
+            provider = old_rtr[ext_provider.ROUTER_PROVIDER]
+            driver = get_driver_by_provider(provider)
+            old_rtr['gw_port'] = self._get_gw_port_detail(
+                context, driver, old_rtr['gw_port_id'])
+            new_rtr = super(RouterMixin, self).update_router(
                 context, router_id, router)
-            new_router['gw_port'] = self._get_gw_info(
-                context, new_router['gw_port_id'])
-
-        try:
-            driver.update_router(context, router_id, old_rtr, new_router)
-            new_status = nconst.ROUTER_STATUS_ACTIVE
-        except (nexc.OFCException, nexc.OFCConsistencyBroken):
-            new_status = nconst.ROUTER_STATUS_ERROR
-        self._update_resource_status(context, "router", new_router['id'],
-                                     new_status)
-        return new_router
+            new_rtr['gw_port'] = self._get_gw_port_detail(
+                context, driver, new_rtr['gw_port_id'])
+        driver.update_router(context, router_id, old_rtr, new_rtr)
+        return new_rtr
 
     def delete_router(self, context, router_id):
         LOG.debug(_("RouterMixin.delete_router() called, id=%s."), router_id)
 
         router = super(RouterMixin, self).get_router(context, router_id)
         tenant_id = router['tenant_id']
+        # Since l3_db.delete_router() has no interaction with the plugin layer,
+        # we need to check if the router can be deleted first.
         self._check_router_in_use(context, router_id)
         driver = self._get_router_driver_by_id(context, router_id)
-
-        try:
-            gw_port_id = self._get_gw_port(context, router_id)
-            if gw_port_id:
-                driver.delete_interface(context, router_id, gw_port_id, None)
-            driver.delete_router(context, router_id, router)
-        except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
-            LOG.error(_("delete_router() failed due to %s"), exc)
-            self._update_resource_status(context, "router", router_id,
-                                         nconst.ROUTER_STATUS_ERROR)
-            raise
+        # If gw_port exists, remove it.
+        gw_port = self._get_gw_port(context, router_id)
+        if gw_port:
+            driver.delete_interface(context, router_id, gw_port)
+        driver.delete_router(context, router_id, router)
 
         super(RouterMixin, self).delete_router(context, router_id)
 
@@ -150,58 +124,33 @@ class RouterMixin(extraroute_db.ExtraRoute_db_mixin,
         LOG.debug(_("RouterMixin.add_router_interface() called, "
                     "id=%(id)s, interface=%(interface)s."),
                   {'id': router_id, 'interface': interface_info})
-        new_interface = super(RouterMixin, self).add_router_interface(
+        return super(RouterMixin, self).add_router_interface(
             context, router_id, interface_info)
-        port_id = new_interface['port_id']
-        port = self._get_port(context, port_id)
-        subnet = self._get_subnet(context, new_interface['subnet_id'])
-        port_info = {'network_id': port['network_id'],
-                     'ip_address': port['fixed_ips'][0]['ip_address'],
-                     'cidr': subnet['cidr'],
-                     'mac_address': port['mac_address']}
-
-        driver = self._get_router_driver_by_id(context, router_id)
-        try:
-            driver.add_interface(context, router_id, port_id, port_info)
-            new_status = nconst.ROUTER_STATUS_ACTIVE
-            self._update_resource_status(context, "port", port_id, new_status)
-        except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
-            reason = _("add_router_interface() failed due to %s") % exc
-            LOG.error(reason)
-            new_status = nconst.ROUTER_STATUS_ERROR
-            self._update_resource_status(context, "port", port_id, new_status)
-            raise
-        return new_interface
 
     def remove_router_interface(self, context, router_id, interface_info):
         LOG.debug(_("RouterMixin.remove_router_interface() called, "
                     "id=%(id)s, interface=%(interface)s."),
                   {'id': router_id, 'interface': interface_info})
-
-        port_info = self._check_router_interface_port(context, router_id,
-                                                      interface_info)
-        driver = self._get_router_driver_by_id(context, router_id)
-        port_id = port_info['id']
-        try:
-            driver.delete_interface(context, router_id, port_id,
-                                    port_info)
-            new_status = nconst.ROUTER_STATUS_ACTIVE
-            self._update_resource_status(context, "port", port_id, new_status)
-        except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
-            reason = _("delete_router_interface() failed due to %s") % exc
-            LOG.error(reason)
-            new_status = nconst.ROUTER_STATUS_ERROR
-            self._update_resource_status(context, "port", port_id, new_status)
-            raise
-        # NOTE: If driver.delete_interface fails, raise an exception.
-        # delete_port below is called only when delete_interface succeeds.
         return super(RouterMixin, self).remove_router_interface(
             context, router_id, interface_info)
 
-    def _get_gw_info(self, context, gw_port_id):
-        ctx_elevated = context.elevated()
-        if not gw_port_id:
+    def create_router_port(self, context, port):
+        # This method is called from plugin.create_port()
+        router_id = port['device_id']
+        driver = self._get_router_driver_by_id(context, router_id)
+        port = driver.add_interface(context, router_id, port)
+        return port
+
+    def delete_router_port(self, context, port):
+        # This method is called from plugin.delete_port()
+        router_id = port['device_id']
+        driver = self._get_router_driver_by_id(context, router_id)
+        return driver.delete_interface(context, router_id, port)
+
+    def _get_gw_port_detail(self, context, driver, gw_port_id):
+        if not gw_port_id or not driver.need_gw_info:
             return
+        ctx_elevated = context.elevated()
         gw_port = self._get_port(ctx_elevated, gw_port_id)
         # At this moment gw_port has been created, so it is guaranteed
         # that fixed_ip is assigned for the gw_port.
@@ -214,47 +163,12 @@ class RouterMixin(extraroute_db.ExtraRoute_db_mixin,
                    'gateway_ip': ext_subnet['gateway_ip']}
         return gw_info
 
-    def _check_router_gw_info(self, context, router_id, router,
-                              router_db=None):
-        # NOTE(amotoki): Borrowed from l3_db._update_router_gw_info
-        # to check the specified gw_info is valid to allow the plugin
-        # to remove gw_port before db_plugin delete_port.
-        # TODO(amotoki): Remove the duplicated code.
-        if 'external_gateway_info' not in router:
-            return
-        info = router['external_gateway_info']
-        router_db = router_db or self._get_router(context, router_id)
-        gw_port = router_db.gw_port
-        # network_id attribute is required by API, so it must be present
-        network_id = info['network_id'] if info else None
-        if network_id:
-            network_db = self._get_network(context, network_id)
-            if not network_db.external:
-                msg = _("Network %s is not a valid external "
-                        "network") % network_id
-                raise q_exc.BadRequest(resource='router', msg=msg)
-
-        if gw_port and gw_port['network_id'] != network_id:
-            fip_count = self.get_floatingips_count(context.elevated(),
-                                                   {'router_id': [router_id]})
-            if fip_count:
-                raise l3.RouterExternalGatewayInUseByFloatingIp(
-                    router_id=router_id, net_id=gw_port['network_id'])
-
-        if network_id is not None and (gw_port is None or
-                                       gw_port['network_id'] != network_id):
-            subnets = self._get_subnets_by_network(context, network_id)
-            for subnet in subnets:
-                self._check_for_dup_router_subnet(context, router_id,
-                                                  network_id, subnet['id'],
-                                                  subnet['cidr'])
-
     def _get_gw_port(self, context, router_id):
         device_filter = {'device_id': [router_id],
                          'device_owner': [l3_db.DEVICE_OWNER_ROUTER_GW]}
         ports = self.get_ports(context.elevated(), filters=device_filter)
         if ports:
-            return ports[0]['id']
+            return ports[0]
 
     def _check_router_in_use(self, context, router_id):
         with context.session.begin(subtransactions=True):
@@ -301,9 +215,8 @@ class RouterMixin(extraroute_db.ExtraRoute_db_mixin,
                     network_id=external_network_id,
                     device_id=router_id,
                     device_owner=l3_db.DEVICE_OWNER_ROUTER_GW).count()
-                if (has_gw_port and
-                    rdb.get_provider_by_router(context.session,
-                                               router_id) == PROVIDER_L3AGENT):
+                driver = self._get_router_driver_by_id(context, router_id)
+                if (has_gw_port and driver.floating_ip_support()):
                     return router_id
 
         raise l3.ExternalGatewayForFloatingIPNotFound(
@@ -393,10 +306,10 @@ class L3AgentNotifyAPI(l3_rpc_agent_api.L3AgentNotifyAPI):
             context, method, router_ids, operation, data)
 
 
-def load_driver(ofc_manager):
+def load_driver(plugin, ofc_manager):
 
     if (PROVIDER_OPENFLOW in ROUTER_DRIVER_MAP and
-        not ofc_manager.driver.router_supported()):
+        not ofc_manager.driver.router_supported):
         LOG.warning(
             _('OFC does not support router with provider=%(provider)s, '
               'so removed it from supported provider '
@@ -410,7 +323,7 @@ def load_driver(ofc_manager):
                     'Please specify one of %(supported)s'),
                   {'default': config.PROVIDER.default_router_provider,
                    'supported': ROUTER_DRIVER_MAP.keys()})
-        sys.exit(1)
+        raise SystemExit(1)
 
     enabled_providers = (set(config.PROVIDER.router_providers +
                              [config.PROVIDER.default_router_provider]) &
@@ -418,7 +331,7 @@ def load_driver(ofc_manager):
 
     for driver in enabled_providers:
         driver_klass = importutils.import_class(ROUTER_DRIVER_MAP[driver])
-        ROUTER_DRIVERS[driver] = driver_klass(ofc_manager)
+        ROUTER_DRIVERS[driver] = driver_klass(plugin, ofc_manager)
 
     LOG.info(_('Enabled router drivers: %s'), ROUTER_DRIVERS.keys())
 
@@ -427,7 +340,7 @@ def load_driver(ofc_manager):
                     ' (supported=%(supported)s, configured=%(config)s)'),
                   {'supported': ROUTER_DRIVER_MAP.keys(),
                    'config': config.PROVIDER.router_providers})
-        sys.exit(1)
+        raise SystemExit(1)
 
 
 def get_provider_with_default(provider):
@@ -450,11 +363,15 @@ class RouterDriverBase(object):
 
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, ofc_manager):
+    def __init__(self, plugin, ofc_manager):
+        self.plugin = plugin
         self.ofc = ofc_manager
 
+    def floating_ip_support(self):
+        return True
+
     @abc.abstractmethod
-    def create_router(self, context, tenant_id, new_router):
+    def create_router(self, context, tenant_id, router):
         pass
 
     @abc.abstractmethod
@@ -466,19 +383,22 @@ class RouterDriverBase(object):
         pass
 
     @abc.abstractmethod
-    def add_interface(self, context, router_id, port_id, port_info):
+    def add_interface(self, context, router_id, port):
         pass
 
     @abc.abstractmethod
-    def delete_interface(self, context, router_id, port_id, port_info):
+    def delete_interface(self, context, router_id, port):
         pass
 
 
 class RouterL3AgentDriver(RouterDriverBase):
 
-    def create_router(self, context, tenant_id, new_router):
+    need_gw_info = False
+
+    def create_router(self, context, tenant_id, router):
         LOG.debug('RouterL3AgentDriver:create_router'
-                  '(router=%s)', new_router)
+                  '(router=%s)', router)
+        return router
 
     def update_router(self, context, router_id, old_router, new_router):
         LOG.debug('RouterL3AgentDriver:update_router'
@@ -490,93 +410,140 @@ class RouterL3AgentDriver(RouterDriverBase):
                   '(id=%(id)s, router=%(router)s)',
                   {'id': router_id, 'router': router})
 
-    def add_interface(self, context, router_id, port_id, port_info):
-        LOG.debug('RouterL3AgentDriver:add_interface'
-                  '(id=%(id)s, port_id=%(port_id)s, port_info=%(port_info)s)',
-                  {'id': router_id, 'port_id': port_id,
-                   'port_info': port_info})
+    def add_interface(self, context, router_id, port):
+        LOG.debug('RouterL3AgentDriver:add_interface (router_id=%s, port=%s)',
+                  {'router_id': router_id, 'port': port})
+        return self.plugin.activate_port_if_ready(context, port)
 
-    def delete_interface(self, context, router_id, port_id, port_info):
-        LOG.debug('RouterL3AgentDriver:delete_interface'
-                  '(id=%(id)s, port_id=%(port_id)s, port_info=%(port_info)s)',
-                  {'id': router_id, 'port_id': port_id,
-                   'port_info': port_info})
+    def delete_interface(self, context, router_id, port):
+        LOG.debug('RouterL3AgentDriver:delete_interface (router_id=%s, '
+                  'port=%s)', {'router_id': router_id, 'port': port})
+        return self.plugin.deactivate_port(context, port)
 
 
 class RouterOpenFlowDriver(RouterDriverBase):
 
-    def create_router(self, context, tenant_id, new_router):
+    need_gw_info = True
+
+    def floating_ip_support(self):
+        return self.ofc.driver.router_nat_supported
+
+    def _process_gw_port(self, gw_info, routes):
+        if gw_info and gw_info['gateway_ip']:
+            routes.append({'destination': '0.0.0.0/0',
+                           'nexthop': gw_info['gateway_ip']})
+
+    def create_router(self, context, tenant_id, router):
         try:
-            router_id = new_router['id']
-            gw_port_id = new_router['gw_port_id']
+            router_id = router['id']
             added_routes = []
             self.ofc.ensure_ofc_tenant(context, tenant_id)
             self.ofc.create_ofc_router(context, tenant_id, router_id,
-                                       new_router['name'])
-            self._process_gw_port(context, router_id, gw_port_id,
-                                  new_router['gw_port'],
-                                  self.ofc.add_ofc_router_interface,
-                                  added_routes)
+                                       router['name'])
+            self._process_gw_port(router['gw_port'], added_routes)
             if added_routes:
                 self.ofc.update_ofc_router_route(context, router_id,
                                                  added_routes, [])
+            new_status = nconst.ROUTER_STATUS_ACTIVE
+            self.plugin._update_resource_status(context, "router",
+                                                router['id'],
+                                                new_status)
+            router['status'] = new_status
+            return router
         except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
             if (isinstance(exc, nexc.OFCException) and
                 exc.status == httplib.CONFLICT):
                 raise nexc.RouterOverLimit(provider=PROVIDER_OPENFLOW)
-            else:
-                reason = _("create_router() failed due to %s") % exc
-                LOG.error(reason)
-                raise
+            reason = _("create_router() failed due to %s") % exc
+            LOG.error(reason)
+            new_status = nconst.ROUTER_STATUS_ERROR
+            self._update_resource_status(context, "router",
+                                         router['id'],
+                                         new_status)
+            raise
 
     def update_router(self, context, router_id, old_router, new_router):
-        old_gw_port_id = old_router['gw_port_id']
-        new_gw_port_id = new_router['gw_port_id']
-        removed_routes = old_router['routes'][:]
-        added_routes = new_router['routes'][:]
-        if old_gw_port_id != new_gw_port_id:
-            self._process_gw_port(context, router_id, old_gw_port_id,
-                                  old_router['gw_port'],
-                                  self.ofc.delete_ofc_router_interface,
-                                  removed_routes)
-            self._process_gw_port(context, router_id, new_gw_port_id,
-                                  new_router['gw_port'],
-                                  self.ofc.add_ofc_router_interface,
-                                  added_routes)
-        return self._update_ofc_routes(context, router_id,
-                                       removed_routes, added_routes)
+        old_routes = old_router['routes'][:]
+        new_routes = new_router['routes'][:]
+        self._process_gw_port(old_router['gw_port'], old_routes)
+        self._process_gw_port(new_router['gw_port'], new_routes)
+        added, removed = utils.diff_list_of_dict(old_routes, new_routes)
+        if added or removed:
+            try:
+                # NOTE(amotoki): PFC supports one-by-one route update at now.
+                # It means there may be a case where some route is updated but
+                # some not. To allow the next call of failures to sync routes
+                # with Neutron side, we pass the whole new routes here.
+                # PFC should support atomic route update in the future.
+                self.ofc.update_ofc_router_route(context, router_id,
+                                                 new_routes)
+                new_status = nconst.ROUTER_STATUS_ACTIVE
+                self.plugin._update_resource_status(
+                    context, "router", router_id, new_status)
+                new_router['status'] = new_status
+            except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
+                reason = _("_update_ofc_routes() failed due to %s") % exc
+                LOG.error(reason)
+                new_status = nconst.ROUTER_STATUS_ERROR
+                self.plugin._update_resource_status(
+                    context, "router", router_id, new_status)
+                raise
+        return new_router
 
     def delete_router(self, context, router_id, router):
-        self.ofc.delete_ofc_router(context, router_id, router)
-
-    def add_interface(self, context, router_id, port_id, port_info):
-        self.ofc.add_ofc_router_interface(context, router_id,
-                                          port_id, port_info)
-
-    def delete_interface(self, context, router_id, port_id, port_info):
-        self.ofc.delete_ofc_router_interface(context, router_id, port_id,
-                                             port_info)
-
-    def _process_gw_port(self, context, router_id, gw_port_id, gw_info,
-                         ofc_func, changed_routes):
-        if gw_port_id:
-            # gw_info = self._get_gw_info(context, router_id, gw_port_id)
-            ofc_func(context, router_id, gw_port_id, gw_info)
-            if gw_info['gateway_ip']:
-                changed_routes.append({'destination': '0.0.0.0/0',
-                                       'nexthop': gw_info['gateway_ip']})
-
-    def _update_ofc_routes(self, context, router_id, old_routes, new_routes):
-        added, removed = utils.diff_list_of_dict(old_routes, new_routes)
-        # NOTE(amotoki): route-update should be supported by PFC.
-        # At the moment we need to remove an old route and then
-        # add a new route. It may leads to no route for some destination
-        # during route update.
         try:
-            self.ofc.update_ofc_router_route(context, router_id,
-                                             added, removed)
-            return True
+            self.ofc.delete_ofc_router(context, router_id, router)
         except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
-            reason = _("_update_ofc_routes() failed due to %s") % exc
+            LOG.error(_("delete_router() failed due to %s"), exc)
+            self.plugin._update_resource_status(context, "router", router_id,
+                                                nconst.ROUTER_STATUS_ERROR)
+            raise
+
+    def add_interface(self, context, router_id, port):
+        port_id = port['id']
+        # port['fixed_ips'] may be empty if ext_net has no subnet.
+        # Such port is invalid for a router port and we don't create a port
+        # on OFC. The port is removed in l3_db._create_router_gw_port.
+        if not port['fixed_ips']:
+            msg = _('RouterOpenFlowDriver.add_interface(): the requested port '
+                    'has no subnet. add_interface() is skipped. '
+                    'router_id=%(id)s, port=%(port)s)')
+            LOG.warning(msg, {'id': router_id, 'port': port})
+            return port
+        fixed_ip = port['fixed_ips'][0]
+        subnet = self.plugin._get_subnet(context, fixed_ip['subnet_id'])
+        port_info = {'network_id': port['network_id'],
+                     'ip_address': fixed_ip['ip_address'],
+                     'cidr': subnet['cidr'],
+                     'mac_address': port['mac_address']}
+        try:
+            self.ofc.add_ofc_router_interface(context, router_id,
+                                              port_id, port_info)
+            new_status = nconst.ROUTER_STATUS_ACTIVE
+            self.plugin._update_resource_status(
+                context, "port", port_id, new_status)
+            return port
+        except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
+            reason = _("add_router_interface() failed due to %s") % exc
             LOG.error(reason)
-            return False
+            new_status = nconst.ROUTER_STATUS_ERROR
+            self.plugin._update_resource_status(
+                context, "port", port_id, new_status)
+            raise
+
+    def delete_interface(self, context, router_id, port):
+        port_id = port['id']
+        try:
+            self.ofc.delete_ofc_router_interface(context, router_id, port_id)
+            new_status = nconst.ROUTER_STATUS_ACTIVE
+            self.plugin._update_resource_status(context, "port", port_id,
+                                                new_status)
+            port['status'] = new_status
+            return port
+        except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
+            reason = _("delete_router_interface() failed due to %s") % exc
+            LOG.error(reason)
+            new_status = nconst.ROUTER_STATUS_ERROR
+            self.plugin._update_resource_status(context, "port", port_id,
+                                                new_status)
+            raise

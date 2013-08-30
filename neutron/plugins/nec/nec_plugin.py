@@ -110,7 +110,19 @@ class NECPluginV2(db_base_plugin_v2.NeutronDbPluginV2,
             config.CONF.router_scheduler_driver
         )
 
-        nec_router.load_driver(self.ofc)
+        nec_router.load_driver(self, self.ofc)
+        self.port_handlers = {
+            'create': {
+                const.DEVICE_OWNER_ROUTER_GW: self.create_router_port,
+                const.DEVICE_OWNER_ROUTER_INTF: self.create_router_port,
+                'default': self.activate_port_if_ready,
+            },
+            'delete': {
+                const.DEVICE_OWNER_ROUTER_GW: self.delete_router_port,
+                const.DEVICE_OWNER_ROUTER_INTF: self.delete_router_port,
+                'default': self.deactivate_port,
+            }
+        }
 
     def setup_rpc(self):
         self.topic = topics.PLUGIN
@@ -366,6 +378,14 @@ class NECPluginV2(db_base_plugin_v2.NeutronDbPluginV2,
                 'security-group' in self.supported_extension_aliases}}
         return binding
 
+    def _get_port_handler(self, operation, device_owner):
+        handlers = self.port_handlers[operation]
+        handler = handlers.get(device_owner)
+        if handler:
+            return handler
+        else:
+            return handlers['default']
+
     def create_port(self, context, port):
         """Create a new port entry on DB, then try to activate it."""
         LOG.debug(_("NECPluginV2.create_port() called, port=%s ."), port)
@@ -384,7 +404,8 @@ class NECPluginV2(db_base_plugin_v2.NeutronDbPluginV2,
                 context, port, sgids)
         self.notify_security_groups_member_updated(context, port)
 
-        return self.activate_port_if_ready(context, port)
+        handler = self._get_port_handler('create', port['device_owner'])
+        return handler(context, port)
 
     def update_port(self, context, id, port):
         """Update port, and handle packetfilters associated with the port.
@@ -427,7 +448,9 @@ class NECPluginV2(db_base_plugin_v2.NeutronDbPluginV2,
         # Thus we need to call self.get_port() instead of super().get_port()
         port = self.get_port(context, id)
 
-        port = self.deactivate_port(context, port)
+        handler = self._get_port_handler('delete', port['device_owner'])
+        port = handler(context, port)
+        # port = self.deactivate_port(context, port)
         if port['status'] == const.PORT_STATUS_ERROR:
             reason = _("Failed to delete port=%s from OFC.") % id
             raise nexc.OFCException(reason=reason)

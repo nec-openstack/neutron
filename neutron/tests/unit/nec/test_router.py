@@ -124,8 +124,9 @@ class NecRouterL3AgentTestCase(test_ext_route.ExtraRouteDBTestCase):
         plugin.router_scheduler = None
 
 
-class NecRouterOpenFlowTestCase(NecRouterTestCaseSkipFloatingIp,
-                                NecRouterL3AgentTestCase):
+# class NecRouterOpenFlowTestCase(NecRouterTestCaseSkipFloatingIp,
+#                                 NecRouterL3AgentTestCase):
+class NecRouterOpenFlowTestCase(NecRouterL3AgentTestCase):
 
     def setUp(self):
         config.CONF.set_override('default_router_provider',

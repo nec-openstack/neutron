@@ -33,6 +33,8 @@ class PFCDriverBase(ofc_driver_base.OFCDriverBase):
     The class implements the API for PFC V4.0 or later.
     """
 
+    router_supported = False
+
     def __init__(self, conf_ofc):
         self.client = ofc_client.OFCClient(host=conf_ofc.host,
                                            port=conf_ofc.port,
@@ -42,10 +44,6 @@ class PFCDriverBase(ofc_driver_base.OFCDriverBase):
 
     @classmethod
     def filter_supported(cls):
-        return False
-
-    @classmethod
-    def router_supported(cls):
         return False
 
     def _generate_pfc_str(self, raw_str):
@@ -146,9 +144,8 @@ class PFCDriverBase(ofc_driver_base.OFCDriverBase):
 
 class PFCRouterDriverMixin(object):
 
-    @classmethod
-    def router_supported(cls):
-        return True
+    router_supported = True
+    router_nat_supported = False
 
     def create_router(self, ofc_tenant_id, router_id, description):
         path = '%s/routers' % ofc_tenant_id

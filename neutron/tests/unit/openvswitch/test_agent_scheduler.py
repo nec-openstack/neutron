@@ -219,6 +219,7 @@ class OvsAgentSchedulerTestCaseBase(test_l3_plugin.L3NatTestCaseMixin,
         # Restore the original RESOURCE_ATTRIBUTE_MAP
         attributes.RESOURCE_ATTRIBUTE_MAP = self.saved_attr_map
 
+
 class OvsAgentSchedulerTestCase(OvsAgentSchedulerTestCaseBase):
 
     def test_report_states(self):

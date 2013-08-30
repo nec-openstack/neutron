@@ -157,9 +157,8 @@ class StubOFCDriver(ofc_driver_base.OFCDriverBase):
     def convert_ofc_filter_id(self, context, ofc_filter_id):
         return ofc_filter_id
 
-    @classmethod
-    def router_supported(cls):
-        return True
+    router_supported = True
+    router_nat_supported = True
 
     def create_router(self, ofc_tenant_id, router_id, description):
         LOG.debug('create_router (router_id=%s, ofc_tenant_id=%s, desc=%s)'

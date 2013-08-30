@@ -227,7 +227,7 @@ class OFCManagerRouterTest(OFCManagerTestBase):
         self.ofc.add_ofc_router_interface(self.ctx, r, p['id'], p)
         self.assertTrue(ndb.get_ofc_item(self.ctx.session,
                                          'ofc_port', p['id']))
-        self.ofc.delete_ofc_router_interface(self.ctx, r, p['id'], p)
+        self.ofc.delete_ofc_router_interface(self.ctx, r, p['id'])
         self.assertFalse(ndb.get_ofc_item(self.ctx.session,
                                           'ofc_port', p['id']))
         self.ofc.delete_ofc_router(self.ctx, r, {'tenant_id': t})
@@ -239,35 +239,32 @@ class OFCManagerRouterTest(OFCManagerTestBase):
         self.ofc.create_ofc_router(self.ctx, t, r)
         self.assertTrue(ndb.get_ofc_item(self.ctx.session, 'ofc_router', r))
 
-        added = [{'destination': '2.2.2.0/24', 'nexthop': '1.1.1.10'}]
-        self.ofc.update_ofc_router_route(self.ctx, r, added_routes=added)
+        routes = [{'destination': '2.2.2.0/24', 'nexthop': '1.1.1.10'}]
+        self.ofc.update_ofc_router_route(self.ctx, r, routes)
         self.assertEqual(len(self.ofc.driver.ofc_router_route_dict), 1)
 
-        added = [{'destination': '3.3.3.0/24', 'nexthop': '1.1.1.11'},
-                 {'destination': '4.4.4.0/24', 'nexthop': '1.1.1.11'}]
-        self.ofc.update_ofc_router_route(self.ctx, r, added_routes=added)
-        self.assertEqual(len(self.ofc.driver.ofc_router_route_dict), 3)
-
-        removed = [{'destination': '2.2.2.0/24', 'nexthop': '1.1.1.10'}]
-        self.ofc.update_ofc_router_route(self.ctx, r, removed_routes=removed)
+        routes = [{'destination': '3.3.3.0/24', 'nexthop': '1.1.1.11'},
+                  {'destination': '4.4.4.0/24', 'nexthop': '1.1.1.11'}]
+        self.ofc.update_ofc_router_route(self.ctx, r, routes)
         self.assertEqual(len(self.ofc.driver.ofc_router_route_dict), 2)
 
-        removed = [{'destination': '3.3.3.0/24', 'nexthop': '1.1.1.11'},
-                   {'destination': '4.4.4.0/24', 'nexthop': '1.1.1.11'}]
-        added = [{'destination': '5.5.5.0/24', 'nexthop': '1.1.1.12'}]
-        self.ofc.update_ofc_router_route(self.ctx, r, added_routes=added,
-                                         removed_routes=removed)
+        routes = [{'destination': '2.2.2.0/24', 'nexthop': '1.1.1.10'}]
+        self.ofc.update_ofc_router_route(self.ctx, r, routes)
         self.assertEqual(len(self.ofc.driver.ofc_router_route_dict), 1)
 
-        removed = [{'destination': '5.5.5.0/24', 'nexthop': '1.1.1.12'}]
-        self.ofc.update_ofc_router_route(self.ctx, r,
-                                         removed_routes=removed)
+        routes = []
+        self.ofc.update_ofc_router_route(self.ctx, r, routes)
         self.assertEqual(len(self.ofc.driver.ofc_router_route_dict), 0)
 
-        # If the specified entry does not exist, it is just ignored.
-        removed = [{'destination': '2.2.2.0/24', 'nexthop': '1.1.1.10'}]
-        self.ofc.update_ofc_router_route(self.ctx, r, removed_routes=removed)
-        self.assertEqual(len(self.ofc.driver.ofc_router_route_dict), 0)
+        # removed = [{'destination': '5.5.5.0/24', 'nexthop': '1.1.1.12'}]
+        # self.ofc.update_ofc_router_route(self.ctx, r,
+        #                                  removed_routes=removed)
+        # self.assertEqual(len(self.ofc.driver.ofc_router_route_dict), 0)
+
+        # # If the specified entry does not exist, it is just ignored.
+        # removed = [{'destination': '2.2.2.0/24', 'nexthop': '1.1.1.10'}]
+        # self.ofc.update_ofc_router_route(self.ctx, r, removed_routes=removed)
+        # self.assertEqual(len(self.ofc.driver.ofc_router_route_dict), 0)
 
 
 class OFCManagerTestWithOldMapping(OFCManagerTestBase):
