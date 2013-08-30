@@ -13,15 +13,12 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
-
-import abc
-
-import httplib
+#
+# @author: Akihiro Motoki
 
 from neutron.api.rpc.agentnotifiers import l3_rpc_agent_api
 from neutron.api.v2 import attributes as attr
 from neutron.common import exceptions as q_exc
-from neutron.common import utils
 from neutron.db import agentschedulers_db
 from neutron.db import db_base_plugin_v2
 from neutron.db import extraroute_db
@@ -42,7 +39,7 @@ LOG = logging.getLogger(__name__)
 PROVIDER_L3AGENT = nconst.ROUTER_PROVIDER_L3AGENT
 PROVIDER_OPENFLOW = nconst.ROUTER_PROVIDER_OPENFLOW
 
-ROUTER_DRIVER_PATH = 'neutron.plugins.nec.nec_router.'
+ROUTER_DRIVER_PATH = 'neutron.plugins.nec.router_drivers.'
 ROUTER_DRIVER_MAP = {
     PROVIDER_L3AGENT: ROUTER_DRIVER_PATH + 'RouterL3AgentDriver',
     PROVIDER_OPENFLOW: ROUTER_DRIVER_PATH + 'RouterOpenFlowDriver'
@@ -357,193 +354,3 @@ def get_driver_by_provider(provider):
     elif provider not in ROUTER_DRIVERS:
         raise nexc.ProviderNotFound(provider=provider)
     return ROUTER_DRIVERS[provider]
-
-
-class RouterDriverBase(object):
-
-    __metaclass__ = abc.ABCMeta
-
-    def __init__(self, plugin, ofc_manager):
-        self.plugin = plugin
-        self.ofc = ofc_manager
-
-    def floating_ip_support(self):
-        return True
-
-    @abc.abstractmethod
-    def create_router(self, context, tenant_id, router):
-        pass
-
-    @abc.abstractmethod
-    def update_router(self, context, router_id, old_router, new_router):
-        pass
-
-    @abc.abstractmethod
-    def delete_router(self, context, router_id, router):
-        pass
-
-    @abc.abstractmethod
-    def add_interface(self, context, router_id, port):
-        pass
-
-    @abc.abstractmethod
-    def delete_interface(self, context, router_id, port):
-        pass
-
-
-class RouterL3AgentDriver(RouterDriverBase):
-
-    need_gw_info = False
-
-    def create_router(self, context, tenant_id, router):
-        LOG.debug('RouterL3AgentDriver:create_router'
-                  '(router=%s)', router)
-        return router
-
-    def update_router(self, context, router_id, old_router, new_router):
-        LOG.debug('RouterL3AgentDriver:update_router'
-                  '(id=%(id)s, router=%(router)s)',
-                  {'id': router_id, 'router': new_router})
-
-    def delete_router(self, context, router_id, router):
-        LOG.debug('RouterL3AgentDriver:delete_router'
-                  '(id=%(id)s, router=%(router)s)',
-                  {'id': router_id, 'router': router})
-
-    def add_interface(self, context, router_id, port):
-        LOG.debug('RouterL3AgentDriver:add_interface (router_id=%s, port=%s)',
-                  {'router_id': router_id, 'port': port})
-        return self.plugin.activate_port_if_ready(context, port)
-
-    def delete_interface(self, context, router_id, port):
-        LOG.debug('RouterL3AgentDriver:delete_interface (router_id=%s, '
-                  'port=%s)', {'router_id': router_id, 'port': port})
-        return self.plugin.deactivate_port(context, port)
-
-
-class RouterOpenFlowDriver(RouterDriverBase):
-
-    need_gw_info = True
-
-    def floating_ip_support(self):
-        return self.ofc.driver.router_nat_supported
-
-    def _process_gw_port(self, gw_info, routes):
-        if gw_info and gw_info['gateway_ip']:
-            routes.append({'destination': '0.0.0.0/0',
-                           'nexthop': gw_info['gateway_ip']})
-
-    def create_router(self, context, tenant_id, router):
-        try:
-            router_id = router['id']
-            added_routes = []
-            self.ofc.ensure_ofc_tenant(context, tenant_id)
-            self.ofc.create_ofc_router(context, tenant_id, router_id,
-                                       router['name'])
-            self._process_gw_port(router['gw_port'], added_routes)
-            if added_routes:
-                self.ofc.update_ofc_router_route(context, router_id,
-                                                 added_routes, [])
-            new_status = nconst.ROUTER_STATUS_ACTIVE
-            self.plugin._update_resource_status(context, "router",
-                                                router['id'],
-                                                new_status)
-            router['status'] = new_status
-            return router
-        except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
-            if (isinstance(exc, nexc.OFCException) and
-                exc.status == httplib.CONFLICT):
-                raise nexc.RouterOverLimit(provider=PROVIDER_OPENFLOW)
-            reason = _("create_router() failed due to %s") % exc
-            LOG.error(reason)
-            new_status = nconst.ROUTER_STATUS_ERROR
-            self._update_resource_status(context, "router",
-                                         router['id'],
-                                         new_status)
-            raise
-
-    def update_router(self, context, router_id, old_router, new_router):
-        old_routes = old_router['routes'][:]
-        new_routes = new_router['routes'][:]
-        self._process_gw_port(old_router['gw_port'], old_routes)
-        self._process_gw_port(new_router['gw_port'], new_routes)
-        added, removed = utils.diff_list_of_dict(old_routes, new_routes)
-        if added or removed:
-            try:
-                # NOTE(amotoki): PFC supports one-by-one route update at now.
-                # It means there may be a case where some route is updated but
-                # some not. To allow the next call of failures to sync routes
-                # with Neutron side, we pass the whole new routes here.
-                # PFC should support atomic route update in the future.
-                self.ofc.update_ofc_router_route(context, router_id,
-                                                 new_routes)
-                new_status = nconst.ROUTER_STATUS_ACTIVE
-                self.plugin._update_resource_status(
-                    context, "router", router_id, new_status)
-                new_router['status'] = new_status
-            except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
-                reason = _("_update_ofc_routes() failed due to %s") % exc
-                LOG.error(reason)
-                new_status = nconst.ROUTER_STATUS_ERROR
-                self.plugin._update_resource_status(
-                    context, "router", router_id, new_status)
-                raise
-        return new_router
-
-    def delete_router(self, context, router_id, router):
-        try:
-            self.ofc.delete_ofc_router(context, router_id, router)
-        except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
-            LOG.error(_("delete_router() failed due to %s"), exc)
-            self.plugin._update_resource_status(context, "router", router_id,
-                                                nconst.ROUTER_STATUS_ERROR)
-            raise
-
-    def add_interface(self, context, router_id, port):
-        port_id = port['id']
-        # port['fixed_ips'] may be empty if ext_net has no subnet.
-        # Such port is invalid for a router port and we don't create a port
-        # on OFC. The port is removed in l3_db._create_router_gw_port.
-        if not port['fixed_ips']:
-            msg = _('RouterOpenFlowDriver.add_interface(): the requested port '
-                    'has no subnet. add_interface() is skipped. '
-                    'router_id=%(id)s, port=%(port)s)')
-            LOG.warning(msg, {'id': router_id, 'port': port})
-            return port
-        fixed_ip = port['fixed_ips'][0]
-        subnet = self.plugin._get_subnet(context, fixed_ip['subnet_id'])
-        port_info = {'network_id': port['network_id'],
-                     'ip_address': fixed_ip['ip_address'],
-                     'cidr': subnet['cidr'],
-                     'mac_address': port['mac_address']}
-        try:
-            self.ofc.add_ofc_router_interface(context, router_id,
-                                              port_id, port_info)
-            new_status = nconst.ROUTER_STATUS_ACTIVE
-            self.plugin._update_resource_status(
-                context, "port", port_id, new_status)
-            return port
-        except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
-            reason = _("add_router_interface() failed due to %s") % exc
-            LOG.error(reason)
-            new_status = nconst.ROUTER_STATUS_ERROR
-            self.plugin._update_resource_status(
-                context, "port", port_id, new_status)
-            raise
-
-    def delete_interface(self, context, router_id, port):
-        port_id = port['id']
-        try:
-            self.ofc.delete_ofc_router_interface(context, router_id, port_id)
-            new_status = nconst.ROUTER_STATUS_ACTIVE
-            self.plugin._update_resource_status(context, "port", port_id,
-                                                new_status)
-            port['status'] = new_status
-            return port
-        except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
-            reason = _("delete_router_interface() failed due to %s") % exc
-            LOG.error(reason)
-            new_status = nconst.ROUTER_STATUS_ERROR
-            self.plugin._update_resource_status(context, "port", port_id,
-                                                new_status)
-            raise
