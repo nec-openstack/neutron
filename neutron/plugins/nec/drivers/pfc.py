@@ -19,8 +19,14 @@
 import re
 import uuid
 
+import netaddr
+
+from neutron.api.v2 import attributes
+from neutron.common import log as call_log
+from neutron import manager
 from neutron.plugins.nec.common import ofc_client
 from neutron.plugins.nec.db import api as ndb
+from neutron.plugins.nec.extensions import packetfilter as ext_pf
 from neutron.plugins.nec import ofc_driver_base
 
 
@@ -79,6 +85,11 @@ class PFCDriverBase(ofc_driver_base.OFCDriverBase):
         # ofc_network_id : /tenants/<tenant-id>/networks/<network-id>
         return ofc_network_id.split('/')[4]
 
+    def _extract_ofc_port_id(self, ofc_port_id):
+        # ofc_port_id :
+        # /tenants/<tenant-id>/networks/<network-id>/ports/<port-id>
+        return ofc_port_id.split('/')[6]
+
     def create_tenant(self, description, tenant_id=None):
         ofc_tenant_id = self._generate_pfc_id(tenant_id)
         body = {'id': ofc_tenant_id}
@@ -100,11 +111,14 @@ class PFCDriverBase(ofc_driver_base.OFCDriverBase):
         return self.client.delete(ofc_network_id)
 
     def create_port(self, ofc_network_id, portinfo,
-                    port_id=None):
+                    port_id=None, filters=None):
         path = "%s/ports" % ofc_network_id
         body = {'datapath_id': portinfo.datapath_id,
                 'port': str(portinfo.port_no),
                 'vid': str(portinfo.vlan_id)}
+        if self.filter_supported and filters:
+            body['filters'] = [self._extract_ofc_filter_id(pf[1])
+                               for pf in filters]
         res = self.client.post(path, body=body)
         ofc_port_id = res['id']
         return path + '/' + ofc_port_id
@@ -140,6 +154,144 @@ class PFCDriverBase(ofc_driver_base.OFCDriverBase):
             context, ofc_network_id, tenant_id)
         params = dict(network=ofc_network_id, port=ofc_port_id)
         return '%(network)s/ports/%(port)s' % params
+
+
+class PFCFilterDriverMixin(object):
+    """PFC PacketFilter Driver Mixin."""
+    filters_path = "/filters"
+    filter_path = "/filters/%s"
+
+    @classmethod
+    def filter_supported(cls):
+        return True
+
+    def _generate_body(self, filter_dict, apply_ports=None, create=True):
+        body = {}
+
+        if create:
+            # action : pass, drop (mandatory)
+            if filter_dict['action'].upper() in ["ACCEPT", "ALLOW"]:
+                body['action'] = "pass"
+            else:
+                body['action'] = "drop"
+            # priority : 1-32766 (mandatory)
+            body['priority'] = filter_dict['priority']
+
+        for key in ['src_mac', 'dst_mac', 'src_port', 'dst_port']:
+            if key in filter_dict:
+                if filter_dict[key]:
+                    body[key] = filter_dict[key]
+                else:
+                    body[key] = ""
+
+        if 'src_mac' in filter_dict:
+            body['src_mac'] = filter_dict['src_mac']
+
+        if 'dst_mac' in filter_dict:
+            body['dst_mac'] = filter_dict['dst_mac']
+
+        for key in ['src_cidr', 'dst_cidr']:
+            if key in filter_dict:
+                if filter_dict[key]:
+                    # CIDR must contain netmask even if it is an address.
+                    body[key] = str(netaddr.IPNetwork(filter_dict[key]))
+                else:
+                    body[key] = ""
+
+        # apply_ports
+        if apply_ports:
+            body['apply_ports'] = [self._extract_ofc_port_id(p[1])
+                                   for p in apply_ports]
+
+        # protocol : decimal (0-255)
+        # eth_type : hex (0x0-0xFFFF)
+        if 'protocol' in filter_dict:
+            if filter_dict['protocol'].upper() == "ICMP":
+                body['eth_type'] = "0x800"
+                body['protocol'] = 1
+            elif filter_dict['protocol'].upper() == "TCP":
+                body['eth_type'] = "0x800"
+                body['nw_proto'] = 6
+            elif filter_dict['protocol'].upper() == "UDP":
+                body['eth_type'] = "0x800"
+                body['nw_proto'] = 17
+            elif filter_dict['protocol'].upper() == "ARP":
+                body['eth_type'] = "0x806"
+            elif filter_dict['protocol']:
+                body['protocol'] = int(filter_dict['protocol'], 0)
+            else:
+                body['protocol'] = ""
+
+        if 'eth_type' not in body and 'eth_type' in filter_dict:
+            if filter_dict['eth_type']:
+                body['eth_type'] = hex(filter_dict['eth_type'])
+            else:
+                body['eth_type'] = ""
+
+        return body
+
+    def _validate_filter_common(self, filter_dict):
+        # Currently PFC support only IPv4 CIDR.
+        for field in ['src_cidr', 'dst_cidr']:
+            if (field not in filter_dict or
+                filter_dict[field] == attributes.ATTR_NOT_SPECIFIED):
+                continue
+            net = netaddr.IPNetwork(filter_dict[field])
+            if net.version != 4:
+                raise ext_pf.PacketFilterIpVersionNonSupported(
+                    version=net.version, field=field, value=filter_dict[field])
+        # priority should be 1-32766
+        if ('priority' in filter_dict and
+            not (1 <= filter_dict['priority'] <= 32766)):
+            raise ext_pf.PacketFilterInvalidPriority(min=1, max=32766)
+
+    def _validate_duplicate_priority(self, context, filter_dict):
+        plugin = manager.NeutronManager.get_plugin()
+        filters = {'network_id': [filter_dict['network_id']],
+                   'priority': [filter_dict['priority']]}
+        ret = plugin.get_packet_filters(context, filters=filters,
+                                        fields=['id'])
+        if ret:
+            raise ext_pf.PacketFilterDuplicatedPriority(
+                priority=filter_dict['priority'])
+
+    def validate_filter_create(self, context, filter_dict):
+        self._validate_filter_common(filter_dict)
+        self._validate_duplicate_priority(context, filter_dict)
+
+    def validate_filter_update(self, context, filter_dict):
+        for field in ['action', 'priority']:
+            if field in filter_dict:
+                raise ext_pf.PacketFilterUpdateNotSupported(field=field)
+        self._validate_filter_common(filter_dict)
+
+    @call_log.log
+    def create_filter(self, ofc_network_id, filter_dict,
+                      portinfo=None, filter_id=None, apply_ports=None):
+        body = self._generate_body(filter_dict, apply_ports, create=True)
+        res = self.client.post(self.filters_path, body=body)
+        # filter_id passed from a caller is not used.
+        # ofc_filter_id is generated by PFC because the prefix of
+        # filter_id has special meaning and it is internally used.
+        ofc_filter_id = res['id']
+        return self.filter_path % ofc_filter_id
+
+    @call_log.log
+    def update_filter(self, ofc_filter_id, filter_dict):
+        body = self._generate_body(filter_dict, create=False)
+        self.client.put(ofc_filter_id, body)
+
+    def delete_filter(self, ofc_filter_id):
+        return self.client.delete(ofc_filter_id)
+
+    def _extract_ofc_filter_id(self, ofc_filter_id):
+        # ofc_filter_id : /filters/<filter-id>
+        return ofc_filter_id.split('/')[2]
+
+    def convert_ofc_filter_id(self, context, ofc_filter_id):
+        # PFC Packet Filter is supported after the format of mapping tables
+        # are changed, so it is enough just to return ofc_filter_id
+        return ofc_filter_id
 
 
 class PFCRouterDriverMixin(object):
@@ -217,4 +369,8 @@ class PFCV4Driver(PFCDriverBase):
 
 
 class PFCV5Driver(PFCRouterDriverMixin, PFCDriverBase):
+    pass
+
+
+class PFCV51Driver(PFCFilterDriverMixin, PFCV5Driver):
     pass

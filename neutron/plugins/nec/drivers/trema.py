@@ -86,7 +86,7 @@ class TremaFilterDriverMixin(object):
         return True
 
     def create_filter(self, ofc_network_id, filter_dict,
-                      portinfo=None, filter_id=None):
+                      portinfo=None, filter_id=None, apply_ports=None):
         if filter_dict['action'].upper() in ["ACCEPT", "ALLOW"]:
             ofc_action = "ALLOW"
         elif filter_dict['action'].upper() in ["DROP", "DENY"]:
@@ -165,6 +165,10 @@ class TremaFilterDriverMixin(object):
         self.client.post(self.filters_path, body=body)
         return self.filter_path % ofc_filter_id
 
+    def update_filter(self, ofc_filter_id, filter_dict):
+        raise NotImplementedError('update_filter is not supported in '
+                                  'Sliceable Switch.')
+
     def delete_filter(self, ofc_filter_id):
         return self.client.delete(ofc_filter_id)
 
@@ -185,7 +189,7 @@ class TremaPortBaseDriver(TremaDriverBase, TremaFilterDriverMixin):
     port_path = "%(network)s/ports/%(port)s"
 
     def create_port(self, ofc_network_id, portinfo,
-                    port_id=None):
+                    port_id=None, filters=None):
         ofc_port_id = port_id or uuidutils.generate_uuid()
         path = self.ports_path % {'network': ofc_network_id}
         body = {'id': ofc_port_id,
@@ -224,7 +228,8 @@ class TremaPortMACBaseDriver(TremaDriverBase, TremaFilterDriverMixin):
     attachments_path = "%(network)s/ports/%(port)s/attachments"
     attachment_path = "%(network)s/ports/%(port)s/attachments/%(attachment)s"
 
-    def create_port(self, ofc_network_id, portinfo, port_id=None):
+    def create_port(self, ofc_network_id, portinfo, port_id=None,
+                    filters=None):
         #NOTE: This Driver create slices with Port-MAC Based bindings on Trema
         #      Sliceable.  It's REST API requires Port Based binding before you
         #      define Port-MAC Based binding.
@@ -282,7 +287,8 @@ class TremaMACBaseDriver(TremaDriverBase):
     def filter_supported(cls):
         return False
 
-    def create_port(self, ofc_network_id, portinfo, port_id=None):
+    def create_port(self, ofc_network_id, portinfo, port_id=None,
+                    filters=None):
         ofc_port_id = port_id or uuidutils.generate_uuid()
         path = self.attachments_path % {'network': ofc_network_id}
         body = {'id': ofc_port_id, 'mac': portinfo.mac}

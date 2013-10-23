@@ -20,19 +20,16 @@ from sqlalchemy import orm
 from sqlalchemy.orm import exc as sa_exc
 
 from neutron.api.v2 import attributes
-from neutron.common import exceptions
 from neutron.db import model_base
 from neutron.db import models_v2
 from neutron.openstack.common import uuidutils
+from neutron.plugins.nec.db import models as nmodels
+from neutron.plugins.nec.extensions import packetfilter as ext_pf
 
 
 PF_STATUS_ACTIVE = 'ACTIVE'
 PF_STATUS_DOWN = 'DOWN'
 PF_STATUS_ERROR = 'ERROR'
-
-
-class PacketFilterNotFound(exceptions.NotFound):
-    message = _("PacketFilter %(id)s could not be found")
 
 
 class PacketFilter(model_base.BASEV2, models_v2.HasId, models_v2.HasTenant):
@@ -96,7 +93,7 @@ class PacketFilterDbMixin(object):
         try:
             pf_entry = self._get_by_id(context, PacketFilter, id)
         except sa_exc.NoResultFound:
-            raise PacketFilterNotFound(id=id)
+            raise ext_pf.PacketFilterNotFound(id=id)
         return pf_entry
 
     def get_packet_filter(self, context, id, fields=None):
@@ -162,3 +159,25 @@ class PacketFilterDbMixin(object):
         with context.session.begin(subtransactions=True):
             pf_entry = self._get_packet_filter(context, id)
             context.session.delete(pf_entry)
+
+    def get_packet_filters_for_port(self, context, port):
+        """Retrieve packet filters on OFC on a given port.
+
+        It returns a list of tuple (neutron filter_id, OFC id).
+        """
+        pf_model = PacketFilter
+        pf_map = nmodels.OFCFilterMapping
+
+        query = (context.session.query(pf_model, pf_map)
+                 .filter(pf_model.id == pf_map.quantum_id)
+                 .filter_by(admin_state_up=True))
+
+        net_pf_query = (query.filter_by(network_id=port['network_id'])
+                        .filter_by(in_port=None))
+        net_filters = [(pf[0].id, pf[1].ofc_id) for pf in net_pf_query]
+
+        port_pf_query = (query.filter_by(in_port=port['id'])
+                         .filter_by(status=PF_STATUS_DOWN))
+        port_filters = [(pf[0].id, pf[1].ofc_id) for pf in port_pf_query]
+
+        return net_filters + port_filters
