@@ -37,6 +37,28 @@ quota_packet_filter_opts = [
 cfg.CONF.register_opts(quota_packet_filter_opts, 'QUOTAS')
 
 
+class PacketFilterNotFound(exceptions.NotFound):
+    message = _("PacketFilter %(id)s could not be found")
+
+
+class PacketFilterIpVersionNonSupported(exceptions.BadRequest):
+    message = _("IP version %(version)s is not supported for %(field)s "
+                "(%(value)s is specified)")
+
+
+class PacketFilterInvalidPriority(exceptions.BadRequest):
+    message = _("Packet Filter priority should be %(min)s-%(max)s (included)")
+
+
+class PacketFilterUpdateNotSupported(exceptions.BadRequest):
+    message = _("%(field)s field cannot be updated")
+
+
+class PacketFilterDuplicatedPriority(exceptions.BadRequest):
+    message = _("The backend does not support duplicated priority. "
+                "Priority %(priority)s is in use")
+
+
 def convert_to_int(data):
     try:
         return int(data, 0)
