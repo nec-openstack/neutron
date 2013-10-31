@@ -165,10 +165,6 @@ class TremaFilterDriverMixin(object):
         self.client.post(self.filters_path, body=body)
         return self.filter_path % ofc_filter_id
 
-    def update_filter(self, ofc_filter_id, filter_dict):
-        raise NotImplementedError('update_filter is not supported in '
-                                  'Sliceable Switch.')
-
     def delete_filter(self, ofc_filter_id):
         return self.client.delete(ofc_filter_id)
 
