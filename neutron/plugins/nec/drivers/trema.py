@@ -125,16 +125,16 @@ class TremaFilterDriverMixin(object):
             ofp_wildcards.append("nw_dst:32")
 
         if filter_dict['protocol']:
-            if filter_dict['protocol'].upper() in "ICMP":
+            if filter_dict['protocol'].upper() == "ICMP":
                 body['dl_type'] = "0x800"
                 body['nw_proto'] = hex(1)
-            elif filter_dict['protocol'].upper() in "TCP":
+            elif filter_dict['protocol'].upper() == "TCP":
                 body['dl_type'] = "0x800"
                 body['nw_proto'] = hex(6)
-            elif filter_dict['protocol'].upper() in "UDP":
+            elif filter_dict['protocol'].upper() == "UDP":
                 body['dl_type'] = "0x800"
                 body['nw_proto'] = hex(17)
-            elif filter_dict['protocol'].upper() in "ARP":
+            elif filter_dict['protocol'].upper() == "ARP":
                 body['dl_type'] = "0x806"
                 ofp_wildcards.append("nw_proto")
             else:
