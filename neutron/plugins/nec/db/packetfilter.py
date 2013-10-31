@@ -31,6 +31,8 @@ PF_STATUS_ACTIVE = 'ACTIVE'
 PF_STATUS_DOWN = 'DOWN'
 PF_STATUS_ERROR = 'ERROR'
 
+INT_FIELDS = ('eth_type', 'src_port', 'dst_port')
+
 
 class PacketFilter(model_base.BASEV2, models_v2.HasId, models_v2.HasTenant):
     """Represents a packet filter."""
@@ -77,14 +79,14 @@ class PacketFilterDbMixin(object):
                'action': pf_entry['action'],
                'priority': pf_entry['priority'],
                'in_port': pf_entry['in_port'],
-               'src_mac': pf_entry['src_mac'],
-               'dst_mac': pf_entry['dst_mac'],
-               'eth_type': pf_entry['eth_type'],
-               'src_cidr': pf_entry['src_cidr'],
-               'dst_cidr': pf_entry['dst_cidr'],
-               'protocol': pf_entry['protocol'],
-               'src_port': pf_entry['src_port'],
-               'dst_port': pf_entry['dst_port'],
+               'src_mac': pf_entry['src_mac'] or None,
+               'dst_mac': pf_entry['dst_mac'] or None,
+               'eth_type': pf_entry['eth_type'] or None,
+               'src_cidr': pf_entry['src_cidr'] or None,
+               'dst_cidr': pf_entry['dst_cidr'] or None,
+               'protocol': pf_entry['protocol'] or None,
+               'src_port': pf_entry['src_port'] or None,
+               'dst_port': pf_entry['dst_port'] or None,
                'admin_state_up': pf_entry['admin_state_up'],
                'status': pf_entry['status']}
         return self._fields(res, fields)
@@ -106,6 +108,25 @@ class PacketFilterDbMixin(object):
                                     self._make_packet_filter_dict,
                                     filters=filters,
                                     fields=fields)
+
+    def _replace_unspecified_field(self, params, key):
+        if params[key] == attributes.ATTR_NOT_SPECIFIED:
+            if key == 'in_port':
+                params[key] = None
+            elif key in INT_FIELDS:
+                # Integer field
+                params[key] = 0
+            else:
+                params[key] = ''
+
+    def _replace_none_field(self, params, key):
+        if params[key] is None:
+            if key == 'in_port':
+                pass
+            elif key in INT_FIELDS:
+                params[key] = 0
+            else:
+                params[key] = ''
 
     def create_packet_filter(self, context, packet_filter):
         pf_dict = packet_filter['packet_filter']
@@ -135,12 +156,9 @@ class PacketFilterDbMixin(object):
                   'src_port': pf_dict['src_port'],
                   'dst_port': pf_dict['dst_port'],
                   'protocol': pf_dict['protocol']}
-        for key, default in params.items():
-            if params[key] == attributes.ATTR_NOT_SPECIFIED:
-                if key == 'in_port':
-                    params[key] = None
-                else:
-                    params[key] = ''
+        for key in params:
+            self._replace_unspecified_field(params, key)
+            self._replace_none_field(params, key)
 
         with context.session.begin(subtransactions=True):
             pf_entry = PacketFilter(**params)
@@ -149,10 +167,12 @@ class PacketFilterDbMixin(object):
         return self._make_packet_filter_dict(pf_entry)
 
     def update_packet_filter(self, context, id, packet_filter):
-        pf = packet_filter['packet_filter']
+        params = packet_filter['packet_filter']
+        for key in params:
+            self._replace_none_field(params, key)
         with context.session.begin(subtransactions=True):
             pf_entry = self._get_packet_filter(context, id)
-            pf_entry.update(pf)
+            pf_entry.update(params)
         return self._make_packet_filter_dict(pf_entry)
 
     def delete_packet_filter(self, context, id):

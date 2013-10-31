@@ -59,7 +59,7 @@ class PacketFilterDuplicatedPriority(exceptions.BadRequest):
                 "Priority %(priority)s is in use")
 
 
-def convert_to_int(data):
+def convert_to_int_dec_and_hex(data):
     try:
         return int(data, 0)
     except (ValueError, TypeError):
@@ -69,6 +69,12 @@ def convert_to_int(data):
     except (ValueError, TypeError):
         msg = _("'%s' is not a integer") % data
         raise exceptions.InvalidInput(error_message=msg)
+
+
+def convert_to_int_or_none(data):
+    if data is None:
+        return
+    return convert_to_int_dec_and_hex(data)
 
 
 ALIAS = 'packet-filter'
@@ -101,7 +107,7 @@ PACKET_FILTER_ATTR_PARAMS = {
                'validate': {'type:regex': PACKET_FILTER_ACTION_REGEX},
                'is_visible': True},
     'priority': {'allow_post': True, 'allow_put': True,
-                 'convert_to': convert_to_int,
+                 'convert_to': convert_to_int_dec_and_hex,
                  'is_visible': True},
     'in_port': {'allow_post': True, 'allow_put': False,
                 'default': attributes.ATTR_NOT_SPECIFIED,
@@ -109,35 +115,36 @@ PACKET_FILTER_ATTR_PARAMS = {
                 'is_visible': True},
     'src_mac': {'allow_post': True, 'allow_put': True,
                 'default': attributes.ATTR_NOT_SPECIFIED,
-                'validate': {'type:mac_address': None},
+                'validate': {'type:mac_address_or_none': None},
                 'is_visible': True},
     'dst_mac': {'allow_post': True, 'allow_put': True,
                 'default': attributes.ATTR_NOT_SPECIFIED,
-                'validate': {'type:mac_address': None},
+                'validate': {'type:mac_address_or_none': None},
                 'is_visible': True},
     'eth_type': {'allow_post': True, 'allow_put': True,
                  'default': attributes.ATTR_NOT_SPECIFIED,
-                 'convert_to': convert_to_int,
+                 'convert_to': convert_to_int_or_none,
                  'is_visible': True},
     'src_cidr': {'allow_post': True, 'allow_put': True,
                  'default': attributes.ATTR_NOT_SPECIFIED,
-                 'validate': {'type:subnet': None},
+                 'validate': {'type:subnet_or_none': None},
                  'is_visible': True},
     'dst_cidr': {'allow_post': True, 'allow_put': True,
                  'default': attributes.ATTR_NOT_SPECIFIED,
-                 'validate': {'type:subnet': None},
+                 'validate': {'type:subnet_or_none': None},
                  'is_visible': True},
     'protocol': {'allow_post': True, 'allow_put': True,
                  'default': attributes.ATTR_NOT_SPECIFIED,
-                 'validate': {'type:regex': PACKET_FILTER_PROTOCOL_REGEX},
+                 'validate': {'type:regex_or_none':
+                              PACKET_FILTER_PROTOCOL_REGEX},
                  'is_visible': True},
     'src_port': {'allow_post': True, 'allow_put': True,
                  'default': attributes.ATTR_NOT_SPECIFIED,
-                 'convert_to': convert_to_int,
+                 'convert_to': convert_to_int_or_none,
                  'is_visible': True},
     'dst_port': {'allow_post': True, 'allow_put': True,
                  'default': attributes.ATTR_NOT_SPECIFIED,
-                 'convert_to': convert_to_int,
+                 'convert_to': convert_to_int_or_none,
                  'is_visible': True},
 }
 PACKET_FILTER_ATTR_MAP = {COLLECTION: PACKET_FILTER_ATTR_PARAMS}

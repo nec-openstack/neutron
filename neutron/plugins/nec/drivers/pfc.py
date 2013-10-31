@@ -179,16 +179,13 @@ class PFCFilterDriverMixin(object):
 
         for key in ['src_mac', 'dst_mac', 'src_port', 'dst_port']:
             if key in filter_dict:
-                if filter_dict[key]:
-                    body[key] = filter_dict[key]
-                else:
-                    body[key] = ""
+                body[key] = filter_dict[key] or ""
 
         if 'src_mac' in filter_dict:
-            body['src_mac'] = filter_dict['src_mac']
+            body['src_mac'] = filter_dict['src_mac'] or ""
 
         if 'dst_mac' in filter_dict:
-            body['dst_mac'] = filter_dict['dst_mac']
+            body['dst_mac'] = filter_dict['dst_mac'] or ""
 
         for key in ['src_cidr', 'dst_cidr']:
             if key in filter_dict:
@@ -198,15 +195,12 @@ class PFCFilterDriverMixin(object):
                 else:
                     body[key] = ""
 
-        # apply_ports
-        if apply_ports:
-            body['apply_ports'] = [self._extract_ofc_port_id(p[1])
-                                   for p in apply_ports]
-
         # protocol : decimal (0-255)
         # eth_type : hex (0x0-0xFFFF)
         if 'protocol' in filter_dict:
-            if filter_dict['protocol'].upper() == "ICMP":
+            if not filter_dict['protocol']:
+                body['protocol'] = ""
+            elif filter_dict['protocol'].upper() == "ICMP":
                 body['eth_type'] = "0x800"
                 body['protocol'] = 1
             elif filter_dict['protocol'].upper() == "TCP":
@@ -217,10 +211,8 @@ class PFCFilterDriverMixin(object):
                 body['nw_proto'] = 17
             elif filter_dict['protocol'].upper() == "ARP":
                 body['eth_type'] = "0x806"
-            elif filter_dict['protocol']:
-                body['protocol'] = int(filter_dict['protocol'], 0)
             else:
-                body['protocol'] = ""
+                body['protocol'] = int(filter_dict['protocol'], 0)
 
         if 'eth_type' not in body and 'eth_type' in filter_dict:
             if filter_dict['eth_type']:
@@ -228,12 +220,17 @@ class PFCFilterDriverMixin(object):
             else:
                 body['eth_type'] = ""
 
+        # apply_ports
+        if apply_ports:
+            body['apply_ports'] = [self._extract_ofc_port_id(p[1])
+                                   for p in apply_ports]
+
         return body
 
     def _validate_filter_common(self, filter_dict):
         # Currently PFC support only IPv4 CIDR.
         for field in ['src_cidr', 'dst_cidr']:
-            if (field not in filter_dict or
+            if (not filter_dict.get(field) or
                 filter_dict[field] == attributes.ATTR_NOT_SPECIFIED):
                 continue
             net = netaddr.IPNetwork(filter_dict[field])
