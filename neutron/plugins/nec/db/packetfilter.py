@@ -128,6 +128,29 @@ class PacketFilterDbMixin(object):
             else:
                 params[key] = ''
 
+    def _get_eth_type_for_protocol(self, protocol):
+        if protocol.upper() in ("ICMP", "TCP", "UDP"):
+            return 0x800
+        elif protocol.upper() == "ARP":
+            return 0x806
+
+    def _set_eth_type_from_protocol(self, filter_dict):
+        if filter_dict.get('protocol'):
+            eth_type = self._get_eth_type_for_protocol(filter_dict['protocol'])
+            if eth_type:
+                filter_dict['eth_type'] = eth_type
+
+    def _check_eth_type_and_protocol(self, new_filter, current_filter):
+        if 'protocol' in new_filter or 'eth_type' not in new_filter:
+            return
+        eth_type = self._get_eth_type_for_protocol(current_filter['protocol'])
+        if not eth_type:
+            return
+        if eth_type != new_filter['eth_type']:
+            raise ext_pf.PacketFilterEtherTypeProtocolMismatch(
+                eth_type=hex(new_filter['eth_type']),
+                protocol=current_filter['protocol'])
+
     def create_packet_filter(self, context, packet_filter):
         pf_dict = packet_filter['packet_filter']
         tenant_id = self._get_tenant_id_for_create(context, pf_dict)
@@ -159,6 +182,7 @@ class PacketFilterDbMixin(object):
         for key in params:
             self._replace_unspecified_field(params, key)
             self._replace_none_field(params, key)
+        self._set_eth_type_from_protocol(params)
 
         with context.session.begin(subtransactions=True):
             pf_entry = PacketFilter(**params)
@@ -170,8 +194,10 @@ class PacketFilterDbMixin(object):
         params = packet_filter['packet_filter']
         for key in params:
             self._replace_none_field(params, key)
+        self._set_eth_type_from_protocol(params)
         with context.session.begin(subtransactions=True):
             pf_entry = self._get_packet_filter(context, id)
+            self._check_eth_type_and_protocol(params, pf_entry)
             pf_entry.update(params)
         return self._make_packet_filter_dict(pf_entry)
 

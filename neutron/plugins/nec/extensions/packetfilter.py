@@ -59,6 +59,12 @@ class PacketFilterDuplicatedPriority(exceptions.BadRequest):
                 "Priority %(priority)s is in use")
 
 
+class PacketFilterEtherTypeProtocolMismatch(exceptions.Conflict):
+    message = _("Ether Type '%(eth_type)s' conflicts with protocol "
+                "'%(protocol)s'. Update or clear protocol before "
+                "changing ether type.")
+
+
 def convert_to_int_dec_and_hex(data):
     try:
         return int(data, 0)

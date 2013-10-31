@@ -201,20 +201,15 @@ class PFCFilterDriverMixin(object):
             if not filter_dict['protocol']:
                 body['protocol'] = ""
             elif filter_dict['protocol'].upper() == "ICMP":
-                body['eth_type'] = "0x800"
                 body['protocol'] = 1
             elif filter_dict['protocol'].upper() == "TCP":
-                body['eth_type'] = "0x800"
                 body['nw_proto'] = 6
             elif filter_dict['protocol'].upper() == "UDP":
-                body['eth_type'] = "0x800"
                 body['nw_proto'] = 17
-            elif filter_dict['protocol'].upper() == "ARP":
-                body['eth_type'] = "0x806"
             else:
                 body['protocol'] = int(filter_dict['protocol'], 0)
 
-        if 'eth_type' not in body and 'eth_type' in filter_dict:
+        if 'eth_type' in filter_dict:
             if filter_dict['eth_type']:
                 body['eth_type'] = hex(filter_dict['eth_type'])
             else:
