@@ -165,6 +165,16 @@ class PFCFilterDriverMixin(object):
     def filter_supported(cls):
         return True
 
+    def _set_param(self, filter_dict, body, key, create, convert_to=None):
+        if key in filter_dict:
+            if filter_dict[key]:
+                if convert_to:
+                    body[key] = convert_to(filter_dict[key])
+                else:
+                    body[key] = filter_dict[key]
+            elif not create:
+                body[key] = ""
+
     def _generate_body(self, filter_dict, apply_ports=None, create=True):
         body = {}
 
@@ -178,28 +188,18 @@ class PFCFilterDriverMixin(object):
             body['priority'] = filter_dict['priority']
 
         for key in ['src_mac', 'dst_mac', 'src_port', 'dst_port']:
-            if key in filter_dict:
-                body[key] = filter_dict[key] or ""
-
-        if 'src_mac' in filter_dict:
-            body['src_mac'] = filter_dict['src_mac'] or ""
-
-        if 'dst_mac' in filter_dict:
-            body['dst_mac'] = filter_dict['dst_mac'] or ""
+            self._set_param(filter_dict, body, key, create)
 
         for key in ['src_cidr', 'dst_cidr']:
-            if key in filter_dict:
-                if filter_dict[key]:
-                    # CIDR must contain netmask even if it is an address.
-                    body[key] = str(netaddr.IPNetwork(filter_dict[key]))
-                else:
-                    body[key] = ""
+            # CIDR must contain netmask even if it is an address.
+            convert_to = lambda x: str(netaddr.IPNetwork(x))
+            self._set_param(filter_dict, body, key, create, convert_to)
 
         # protocol : decimal (0-255)
-        # eth_type : hex (0x0-0xFFFF)
         if 'protocol' in filter_dict:
             if not filter_dict['protocol']:
-                body['protocol'] = ""
+                if not create:
+                    body['protocol'] = ""
             elif filter_dict['protocol'].upper() == "ICMP":
                 body['protocol'] = 1
             elif filter_dict['protocol'].upper() == "TCP":
@@ -209,11 +209,8 @@ class PFCFilterDriverMixin(object):
             else:
                 body['protocol'] = int(filter_dict['protocol'], 0)
 
-        if 'eth_type' in filter_dict:
-            if filter_dict['eth_type']:
-                body['eth_type'] = hex(filter_dict['eth_type'])
-            else:
-                body['eth_type'] = ""
+        # eth_type : hex (0x0-0xFFFF)
+        self._set_param(filter_dict, body, 'eth_type', create, hex)
 
         # apply_ports
         if apply_ports:
