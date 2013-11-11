@@ -75,6 +75,11 @@ class PacketFilterMixin(pf_db.PacketFilterDbMixin):
             context, id, packet_filter)
 
         def _packet_filter_changed(old_pf, new_pf):
+            # When the status is ERROR, force sync to OFC.
+            if old_pf['status'] == pf_db.PF_STATUS_ERROR:
+                LOG.debug('update_packet_filter: Force filter update '
+                          'because the previous status is ERROR.')
+                return True
             for key in new_pf:
                 if key in ('id', 'name', 'tenant_id', 'network_id',
                            'in_port', 'status'):
@@ -113,7 +118,9 @@ class PacketFilterMixin(pf_db.PacketFilterDbMixin):
         pf_id = new_pf['id']
         prev_status = new_pf['status']
         try:
-            self.ofc.update_ofc_packet_filter(context, pf_id, pf_data)
+            # If previous status is ERROR, try to sync all attributes.
+            pf = new_pf if prev_status == pf_db.PF_STATUS_ERROR else pf_data
+            self.ofc.update_ofc_packet_filter(context, pf_id, pf)
             new_status = pf_db.PF_STATUS_ACTIVE
             if new_status != prev_status:
                 self._update_resource_status(context, "packet_filter",
