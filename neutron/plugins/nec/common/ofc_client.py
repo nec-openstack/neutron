@@ -24,7 +24,7 @@ from neutron.openstack.common import uuidutils
 from neutron.plugins.nec.common import exceptions as nexc
 
 
-CLIENT_FAKE = True
+CLIENT_FAKE = False
 LOG = logging.getLogger(__name__)
 
 
