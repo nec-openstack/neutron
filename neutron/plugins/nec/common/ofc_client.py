@@ -20,9 +20,11 @@ import json
 import socket
 
 from neutron.openstack.common import log as logging
+from neutron.openstack.common import uuidutils
 from neutron.plugins.nec.common import exceptions as nexc
 
 
+CLIENT_FAKE = True
 LOG = logging.getLogger(__name__)
 
 
@@ -72,6 +74,11 @@ class OFCClient(object):
                     "%(method)s %(action)s [%(body)s]"),
                   {'host': self.host, 'port': self.port,
                    'method': method, 'action': action, 'body': body})
+        if CLIENT_FAKE:
+            if method == "POST":
+                return {'id': uuidutils.generate_uuid()}
+            else:
+                return
         if type(body) is dict:
             body = json.dumps(body)
         try:
