@@ -88,7 +88,10 @@ class PFCDriverBase(ofc_driver_base.OFCDriverBase):
     def _extract_ofc_port_id(self, ofc_port_id):
         # ofc_port_id :
         # /tenants/<tenant-id>/networks/<network-id>/ports/<port-id>
-        return ofc_port_id.split('/')[6]
+        splitted = ofc_port_id.split('/')
+        return {'tenant': splitted[2],
+                'network': splitted[4],
+                'port': splitted[6]}
 
     def create_tenant(self, description, tenant_id=None):
         ofc_tenant_id = self._generate_pfc_id(tenant_id)
@@ -214,6 +217,7 @@ class PFCFilterDriverMixin(object):
 
         # apply_ports
         if apply_ports:
+            # each element of apply_ports is a tuple of (neutron_id, ofc_id),
             body['apply_ports'] = [self._extract_ofc_port_id(p[1])
                                    for p in apply_ports]
 
