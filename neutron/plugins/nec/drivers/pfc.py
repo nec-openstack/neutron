@@ -22,6 +22,7 @@ import uuid
 import netaddr
 
 from neutron.api.v2 import attributes
+from neutron.common import constants
 from neutron.common import log as call_log
 from neutron import manager
 from neutron.plugins.nec.common import ofc_client
@@ -200,15 +201,18 @@ class PFCFilterDriverMixin(object):
 
         # protocol : decimal (0-255)
         if 'protocol' in filter_dict:
-            if not filter_dict['protocol']:
+            if (not filter_dict['protocol'] or
+                # In the case of ARP, ip_proto should be set to wildcard.
+                # eth_type is set during adding an entry to DB layer.
+                filter_dict['protocol'].upper() == "ARP"):
                 if not create:
                     body['protocol'] = ""
             elif filter_dict['protocol'].upper() == "ICMP":
-                body['protocol'] = 1
+                body['protocol'] = constants.PROTO_NUM_ICMP
             elif filter_dict['protocol'].upper() == "TCP":
-                body['nw_proto'] = 6
+                body['protocol'] = constants.PROTO_NUM_TCP
             elif filter_dict['protocol'].upper() == "UDP":
-                body['nw_proto'] = 17
+                body['protocol'] = constants.PROTO_NUM_UDP
             else:
                 body['protocol'] = int(filter_dict['protocol'], 0)
 
