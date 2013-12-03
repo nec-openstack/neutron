@@ -23,12 +23,17 @@ import netaddr
 
 from neutron.api.v2 import attributes
 from neutron.common import constants
+from neutron.common import exceptions as qexc
 from neutron.common import log as call_log
 from neutron import manager
 from neutron.plugins.nec.common import ofc_client
 from neutron.plugins.nec.db import api as ndb
 from neutron.plugins.nec.extensions import packetfilter as ext_pf
 from neutron.plugins.nec import ofc_driver_base
+
+
+class InvalidOFCIdFormat(qexc.NeutronException):
+    message = _("OFC %(resource)s ID has an invalid format: %(ofc_id)s")
 
 
 class PFCDriverBase(ofc_driver_base.OFCDriverBase):
@@ -41,6 +46,12 @@ class PFCDriverBase(ofc_driver_base.OFCDriverBase):
     """
 
     router_supported = False
+
+    match_ofc_network_id = re.compile(
+        "^/tenants/(?P<tenant_id>[^/]+)/networks/(?P<network_id>[^/]+)$")
+    match_ofc_port_id = re.compile(
+        "^/tenants/(?P<tenant_id>[^/]+)/networks/(?P<network_id>[^/]+)"
+        "/ports/(?P<port_id>[^/]+)$")
 
     def __init__(self, conf_ofc):
         self.client = ofc_client.OFCClient(host=conf_ofc.host,
@@ -83,16 +94,18 @@ class PFCDriverBase(ofc_driver_base.OFCDriverBase):
         return self._generate_pfc_str(desc)[:127]
 
     def _extract_ofc_network_id(self, ofc_network_id):
-        # ofc_network_id : /tenants/<tenant-id>/networks/<network-id>
-        return ofc_network_id.split('/')[4]
+        match = self.match_ofc_network_id.match(ofc_network_id)
+        if match:
+            return match.group('network_id')
+        raise InvalidOFCIdFormat(resource='network', ofc_id=ofc_network_id)
 
     def _extract_ofc_port_id(self, ofc_port_id):
-        # ofc_port_id :
-        # /tenants/<tenant-id>/networks/<network-id>/ports/<port-id>
-        splitted = ofc_port_id.split('/')
-        return {'tenant': splitted[2],
-                'network': splitted[4],
-                'port': splitted[6]}
+        match = self.match_ofc_port_id.match(ofc_port_id)
+        if match:
+            return {'tenant': match.group('tenant_id'),
+                    'network': match.group('network_id'),
+                    'port': match.group('port_id')}
+        raise InvalidOFCIdFormat(resource='port', ofc_id=ofc_port_id)
 
     def create_tenant(self, description, tenant_id=None):
         ofc_tenant_id = self._generate_pfc_id(tenant_id)
@@ -165,6 +178,8 @@ class PFCFilterDriverMixin(object):
     filters_path = "/filters"
     filter_path = "/filters/%s"
 
+    match_ofc_filter_id = re.compile("^/filters/(?P<filter_id>[^/]+)$")
+
     @classmethod
     def filter_supported(cls):
         return True
@@ -222,8 +237,12 @@ class PFCFilterDriverMixin(object):
         # apply_ports
         if apply_ports:
             # each element of apply_ports is a tuple of (neutron_id, ofc_id),
-            body['apply_ports'] = [self._extract_ofc_port_id(p[1])
-                                   for p in apply_ports]
+            body['apply_ports'] = []
+            for p in apply_ports:
+                try:
+                    body['apply_ports'].append(self._extract_ofc_port_id(p[1]))
+                except InvalidOFCIdFormat:
+                    pass
 
         return body
 
@@ -282,8 +301,10 @@ class PFCFilterDriverMixin(object):
         return self.client.delete(ofc_filter_id)
 
     def _extract_ofc_filter_id(self, ofc_filter_id):
-        # ofc_filter_id : /filters/<filter-id>
-        return ofc_filter_id.split('/')[2]
+        match = self.match_ofc_filter_id.match(ofc_filter_id)
+        if match:
+            return match.group('filter_id')
+        raise InvalidOFCIdFormat(resource='filter', ofc_id=ofc_filter_id)
 
     def convert_ofc_filter_id(self, context, ofc_filter_id):
         # PFC Packet Filter is supported after the format of mapping tables
