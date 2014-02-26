@@ -149,12 +149,6 @@ class PacketFilterMixin(pf_db.PacketFilterDbMixin):
         pf = self.get_packet_filter(context, id)
 
         pf = self.deactivate_packet_filter(context, pf)
-        if pf['status'] == pf_db.PF_STATUS_ERROR:
-            msg = _("Failed to delete packet_filter id=%s which remains in "
-                    "error status.") % id
-            LOG.error(msg)
-            raise nexc.OFCException(reason=msg)
-
         super(PacketFilterMixin, self).delete_packet_filter(context, id)
 
     def activate_packet_filter_if_ready(self, context, packet_filter):
@@ -214,21 +208,26 @@ class PacketFilterMixin(pf_db.PacketFilterDbMixin):
             try:
                 self.ofc.delete_ofc_packet_filter(context, pf_id)
                 pf_status = pf_db.PF_STATUS_DOWN
+                if pf_status != current:
+                    self._update_resource_status(context, "packet_filter",
+                                                 pf_id, pf_status)
+                    packet_filter['status'] = pf_status
+                return packet_filter
             except (nexc.OFCException, nexc.OFCMappingNotFound) as exc:
-                LOG.error(_("Failed to delete packet_filter id=%(id)s from "
-                            "OFC: %(exc)s"), {'id': pf_id, 'exc': exc})
-                pf_status = pf_db.PF_STATUS_ERROR
+                with excutils.save_and_reraise_exception():
+                    LOG.error(_("Failed to delete packet_filter id=%(id)s "
+                                "from OFC: %(exc)s"),
+                              {'id': pf_id, 'exc': str(exc)})
+                    pf_status = pf_db.PF_STATUS_ERROR
+                    if pf_status != current:
+                        self._update_resource_status(context, "packet_filter",
+                                                     pf_id, pf_status)
+                        packet_filter['status'] = pf_status
         else:
             LOG.debug(_("deactivate_packet_filter(): skip, "
                         "Not found OFC Mapping for packet_filter id=%s."),
                       pf_id)
-
-        if pf_status != current:
-            self._update_resource_status(context, "packet_filter", pf_id,
-                                         pf_status)
-            packet_filter.update({'status': pf_status})
-
-        return packet_filter
+            return packet_filter
 
     def activate_packet_filters_by_port(self, context, port_id):
         if not self.packet_filter_enabled:
@@ -240,14 +239,22 @@ class PacketFilterMixin(pf_db.PacketFilterDbMixin):
         for pf in pfs:
             self.activate_packet_filter_if_ready(context, pf)
 
-    def deactivate_packet_filters_by_port(self, context, port_id):
+    def deactivate_packet_filters_by_port(self, context, port_id,
+                                          raise_exc=True):
         if not self.packet_filter_enabled:
             return
 
         filters = {'in_port': [port_id], 'status': [pf_db.PF_STATUS_ACTIVE]}
         pfs = self.get_packet_filters(context, filters=filters)
+        error = False
         for pf in pfs:
-            self.deactivate_packet_filter(context, pf)
+            try:
+                self.deactivate_packet_filter(context, pf)
+            except (nexc.OFCException, nexc.OFCMappingNotFound):
+                error = True
+        if raise_exc and error:
+            raise nexc.OFCException(_('Error occurred while disabling packet '
+                                      'filter(s) for port %s'), port_id)
 
     def get_packet_filters_for_port(self, context, port):
         if self.packet_filter_enabled:
