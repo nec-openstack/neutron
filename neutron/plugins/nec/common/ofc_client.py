@@ -18,9 +18,11 @@
 import httplib
 import json
 import socket
+import time
 
 from neutron.openstack.common import log as logging
 from neutron.openstack.common import uuidutils
+from neutron.plugins.nec.common import config
 from neutron.plugins.nec.common import exceptions as nexc
 
 
@@ -69,7 +71,7 @@ class OFCClient(object):
         return (_("Operation on OFC failed: %(status)s%(msg)s") %
                 {'status': status, 'msg': detail})
 
-    def do_request(self, method, action, body=None):
+    def do_single_request(self, method, action, body=None):
         LOG.debug(_("Client request: %(host)s:%(port)s "
                     "%(method)s %(action)s [%(body)s]"),
                   {'host': self.host, 'port': self.port,
@@ -102,6 +104,11 @@ class OFCClient(object):
                               httplib.ACCEPTED,
                               httplib.NO_CONTENT):
                 return data
+            elif res.status == httplib.SERVICE_UNAVAILABLE:
+                retry_after = res.getheader('retry-after')
+                LOG.warning(_("OFC returns ServiceUnavailable "
+                              "(retry-after=%s)"), retry_after)
+                raise nexc.OFCServiceUnavailable(retry_after=retry_after)
             elif res.status == httplib.NOT_FOUND:
                 LOG.info(_("Specified resource %s does not exist on OFC "),
                          action)
@@ -122,6 +129,19 @@ class OFCClient(object):
             reason = _("Failed to connect OFC : %s") % e
             LOG.error(reason)
             raise nexc.OFCException(reason=reason)
+
+    def do_request(self, method, action, body=None):
+        max_attempts = config.OFC.api_max_attempts
+        for i in range(max_attempts, 0, -1):
+            try:
+                return self.do_single_request(method, action, body)
+            except nexc.OFCServiceUnavailable as e:
+                wait_time = e.retry_after
+                if i > 1 and wait_time:
+                    LOG.info(_("Waiting for %s seconds due to "
+                               "OFC Service_Unavailable."), wait_time)
+                    time.sleep(wait_time)
+                raise
 
     def get(self, action):
         return self.do_request("GET", action)
