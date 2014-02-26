@@ -79,6 +79,7 @@ class PacketFilterDbMixin(object):
                'action': pf_entry['action'],
                'priority': pf_entry['priority'],
                'in_port': pf_entry['in_port'],
+               # "or None" ensure the filed is None if empty
                'src_mac': pf_entry['src_mac'] or None,
                'dst_mac': pf_entry['dst_mac'] or None,
                'eth_type': pf_entry['eth_type'] or None,
@@ -110,20 +111,11 @@ class PacketFilterDbMixin(object):
                                     fields=fields)
 
     def _replace_unspecified_field(self, params, key):
-        if params[key] == attributes.ATTR_NOT_SPECIFIED:
+        if not attributes.is_attr_set(params[key]):
             if key == 'in_port':
                 params[key] = None
             elif key in INT_FIELDS:
                 # Integer field
-                params[key] = 0
-            else:
-                params[key] = ''
-
-    def _replace_none_field(self, params, key):
-        if params[key] is None:
-            if key == 'in_port':
-                pass
-            elif key in INT_FIELDS:
                 params[key] = 0
             else:
                 params[key] = ''
@@ -181,7 +173,6 @@ class PacketFilterDbMixin(object):
                   'protocol': pf_dict['protocol']}
         for key in params:
             self._replace_unspecified_field(params, key)
-            self._replace_none_field(params, key)
         self._set_eth_type_from_protocol(params)
 
         with context.session.begin(subtransactions=True):
@@ -193,7 +184,7 @@ class PacketFilterDbMixin(object):
     def update_packet_filter(self, context, id, packet_filter):
         params = packet_filter['packet_filter']
         for key in params:
-            self._replace_none_field(params, key)
+            self._replace_unspecified_field(params, key)
         self._set_eth_type_from_protocol(params)
         with context.session.begin(subtransactions=True):
             pf_entry = self._get_packet_filter(context, id)
@@ -211,19 +202,18 @@ class PacketFilterDbMixin(object):
 
         It returns a list of tuple (neutron filter_id, OFC id).
         """
-        pf_model = PacketFilter
-        pf_map = nmodels.OFCFilterMapping
+        query = (context.session.query(nmodels.OFCFilterMapping)
+                 .join(PacketFilter,
+                       nmodels.OFCFilterMapping.quantum_id == PacketFilter.id)
+                 .filter(PacketFilter.admin_state_up == True))
 
-        query = (context.session.query(pf_model, pf_map)
-                 .filter(pf_model.id == pf_map.quantum_id)
-                 .filter_by(admin_state_up=True))
+        network_id = port['network_id']
+        net_pf_query = (query.filter(PacketFilter.network_id == network_id)
+                        .filter(PacketFilter.in_port == None))
+        net_filters = [(pf['quantum_id'], pf['ofc_id']) for pf in net_pf_query]
 
-        net_pf_query = (query.filter_by(network_id=port['network_id'])
-                        .filter_by(in_port=None))
-        net_filters = [(pf[0].id, pf[1].ofc_id) for pf in net_pf_query]
-
-        port_pf_query = (query.filter_by(in_port=port['id'])
-                         .filter_by(status=PF_STATUS_DOWN))
-        port_filters = [(pf[0].id, pf[1].ofc_id) for pf in port_pf_query]
+        port_pf_query = query.filter(PacketFilter.in_port == port['id'])
+        port_filters = [(pf['quantum_id'], pf['ofc_id'])
+                        for pf in port_pf_query]
 
         return net_filters + port_filters

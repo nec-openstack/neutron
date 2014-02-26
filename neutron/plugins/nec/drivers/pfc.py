@@ -133,7 +133,7 @@ class PFCDriverBase(ofc_driver_base.OFCDriverBase):
         body = {'datapath_id': portinfo.datapath_id,
                 'port': str(portinfo.port_no),
                 'vid': str(portinfo.vlan_id)}
-        if self.filter_supported and filters:
+        if self.filter_supported() and filters:
             body['filters'] = [self._extract_ofc_filter_id(pf[1])
                                for pf in filters]
         res = self.client.post(path, body=body)

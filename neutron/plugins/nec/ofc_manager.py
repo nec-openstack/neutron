@@ -19,7 +19,6 @@
 import netaddr
 
 from neutron.common import utils
-from neutron import manager
 from neutron.openstack.common import log as logging
 from neutron.plugins.nec.common import config
 from neutron.plugins.nec.common import exceptions as nexc
@@ -40,8 +39,9 @@ class OFCManager(object):
     of the switch.  An ID named as 'ofc_*' is used to identify resource on OFC.
     """
 
-    def __init__(self):
+    def __init__(self, plugin):
         self.driver = drivers.get_driver(config.OFC.driver)(config.OFC)
+        self.plugin = plugin
 
     def _get_ofc_id(self, context, resource, neutron_id):
         return ndb.get_ofc_id_lookup_both(context.session,
@@ -109,9 +109,8 @@ class OFCManager(object):
             raise nexc.PortInfoNotFound(id=port_id)
 
         # Associate packet filters
-        plugin = manager.NeutronManager.get_plugin()
-        if plugin.packet_filter_enabled:
-            filters = plugin.get_packet_filters_for_port(context, port)
+        filters = self.plugin.get_packet_filters_for_port(context, port)
+        if filters is not None:
             params = {'filters': filters}
         else:
             params = {}
@@ -143,7 +142,7 @@ class OFCManager(object):
                 raise nexc.PortInfoNotFound(id=in_port_id)
 
         # Collect ports to be associated with the filter
-        apply_ports = ndb.get_active_ports_for_packet_filter(
+        apply_ports = ndb.get_active_ports_on_ofc(
             context, filter_dict['network_id'], in_port_id)
         ofc_pf_id = self.driver.create_filter(ofc_net_id,
                                               filter_dict, portinfo, filter_id,

@@ -126,22 +126,28 @@ class TremaFilterDriverMixin(object):
 
         if filter_dict['protocol']:
             if filter_dict['protocol'].upper() == "ICMP":
+                body['dl_type'] = "0x800"
                 body['nw_proto'] = hex(1)
             elif filter_dict['protocol'].upper() == "TCP":
+                body['dl_type'] = "0x800"
                 body['nw_proto'] = hex(6)
             elif filter_dict['protocol'].upper() == "UDP":
+                body['dl_type'] = "0x800"
                 body['nw_proto'] = hex(17)
             elif filter_dict['protocol'].upper() == "ARP":
+                body['dl_type'] = "0x806"
                 ofp_wildcards.append("nw_proto")
             else:
                 body['nw_proto'] = filter_dict['protocol']
         else:
             ofp_wildcards.append("nw_proto")
 
-        if filter_dict['eth_type']:
+        if 'dl_type' in body:
+            pass
+        elif filter_dict['eth_type']:
             body['dl_type'] = filter_dict['eth_type']
         else:
-            ofp_wildcards.append("nw_proto")
+            ofp_wildcards.append("dl_type")
 
         if filter_dict['src_port']:
             body['tp_src'] = hex(filter_dict['src_port'])

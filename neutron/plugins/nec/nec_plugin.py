@@ -99,9 +99,8 @@ class NECPluginV2(db_base_plugin_v2.NeutronDbPluginV2,
         return self._aliases
 
     def __init__(self):
-
         ndb.initialize()
-        self.ofc = ofc_manager.OFCManager()
+        self.ofc = ofc_manager.OFCManager(self)
         self.base_binding_dict = self._get_base_binding_dict()
         portbindings_base.register_port_dict_function()
         # Set the plugin default extension path

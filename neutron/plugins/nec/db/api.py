@@ -207,21 +207,19 @@ def del_portinfo(session, id):
                       "port_id: %s"), id)
 
 
-def get_active_ports_for_packet_filter(context, network_id, port_id=None):
+def get_active_ports_on_ofc(context, network_id, port_id=None):
     """Retrieve ports on OFC on a given network.
 
     It returns a list of tuple (neutron port_id, OFC id).
     """
-    port_model = models_v2.Port
-    port_map = nmodels.OFCPortMapping
-
-    query = context.session.query(port_model, port_map)
-    query = query.filter(port_model.id == port_map.quantum_id)
-    query = query.filter_by(network_id=network_id)
+    query = context.session.query(nmodels.OFCPortMapping)
+    query = query.join(models_v2.Port,
+                       nmodels.OFCPortMapping.quantum_id == models_v2.Port.id)
+    query = query.filter(models_v2.Port.network_id == network_id)
     if port_id:
-        query = query.filter_by(id=port_id)
+        query = query.filter(nmodels.OFCPortMapping.quantum_id == port_id)
 
-    return [(p[0]['id'], p[1]['ofc_id']) for p in query]
+    return [(p['quantum_id'], p['ofc_id']) for p in query]
 
 
 def get_port_from_device(port_id):
