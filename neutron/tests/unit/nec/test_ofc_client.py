@@ -29,8 +29,8 @@ from neutron.tests import base
 
 class OFCClientTest(base.BaseTestCase):
 
-    def _test_do_request(self, status, resbody, data, exctype=None,
-                         exc_checks=None):
+    def _test_do_request(self, status, resbody, expected_data, exctype=None,
+                         exc_checks=None, path_prefix=None):
         res = mock.Mock()
         res.status = status
         res.read.return_value = resbody
@@ -41,21 +41,22 @@ class OFCClientTest(base.BaseTestCase):
         with mock.patch.object(ofc_client.OFCClient, 'get_connection',
                                return_value=conn):
             client = ofc_client.OFCClient()
-
+            path = '/somewhere'
+            realpath = path_prefix + path if path_prefix else path
             if exctype:
                 e = self.assertRaises(exctype, client.do_request,
-                                      'GET', '/somewhere', body={})
-                self.assertEqual(data, str(e))
+                                      'GET', path, body={})
+                self.assertEqual(expected_data, str(e))
                 if exc_checks:
                     for k, v in exc_checks.items():
                         self.assertEqual(v, getattr(e, k))
             else:
-                response = client.do_request('GET', '/somewhere', body={})
-                self.assertEqual(response, data)
+                response = client.do_request('GET', path, body={})
+                self.assertEqual(response, expected_data)
 
             headers = {"Content-Type": "application/json"}
             expected = [
-                mock.call.request('GET', '/somewhere', '{}', headers),
+                mock.call.request('GET', realpath, '{}', headers),
                 mock.call.getresponse(),
             ]
             conn.assert_has_calls(expected)
@@ -177,3 +178,8 @@ class OFCClientTest(base.BaseTestCase):
         conn.assert_has_calls(expected)
         self.assertEqual(exp_request_count, conn.request.call_count)
         self.assertEqual(exp_request_count - 1, sleep.call_count)
+
+    def test_do_request_with_path_prefix(self):
+        cfg.CONF.set_override('path_prefix', '/dummy', group='OFC')
+        self._test_do_request(200, json.dumps([1, 2, 3]), [1, 2, 3],
+                              path_prefix='/dummy')

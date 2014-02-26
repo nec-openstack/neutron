@@ -38,6 +38,9 @@ ofc_opts = [
                help=_("Host to connect to")),
     cfg.StrOpt('port', default='8888',
                help=_("Port to connect to")),
+    cfg.StrOpt('path_prefix', default='',
+               help=_("Base URL of OFC REST API. "
+                      "It is prepended to each API request.")),
     cfg.StrOpt('driver', default='trema',
                help=_("Driver to use")),
     cfg.BoolOpt('enable_packet_filter', default=True,
