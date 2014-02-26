@@ -118,7 +118,7 @@ class RouterOpenFlowDriver(RouterDriverBase):
                                                 new_status)
             router['status'] = new_status
             return router
-        except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
+        except (nexc.OFCException, nexc.OFCMappingNotFound) as exc:
             with excutils.save_and_reraise_exception():
                 if (isinstance(exc, nexc.OFCException) and
                     exc.status == httplib.CONFLICT):
@@ -150,7 +150,7 @@ class RouterOpenFlowDriver(RouterDriverBase):
                 self.plugin._update_resource_status(
                     context, "router", router_id, new_status)
                 new_router['status'] = new_status
-            except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
+            except (nexc.OFCException, nexc.OFCMappingNotFound) as exc:
                 with excutils.save_and_reraise_exception():
                     reason = _("_update_ofc_routes() failed due to %s") % exc
                     LOG.error(reason)
@@ -163,7 +163,7 @@ class RouterOpenFlowDriver(RouterDriverBase):
     def delete_router(self, context, router_id, router):
         try:
             self.ofc.delete_ofc_router(context, router_id, router)
-        except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
+        except (nexc.OFCException, nexc.OFCMappingNotFound) as exc:
             with excutils.save_and_reraise_exception():
                 LOG.error(_("delete_router() failed due to %s"), exc)
                 self.plugin._update_resource_status(
@@ -194,7 +194,7 @@ class RouterOpenFlowDriver(RouterDriverBase):
             self.plugin._update_resource_status(
                 context, "port", port_id, new_status)
             return port
-        except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
+        except (nexc.OFCException, nexc.OFCMappingNotFound) as exc:
             with excutils.save_and_reraise_exception():
                 reason = _("add_router_interface() failed due to %s") % exc
                 LOG.error(reason)
@@ -212,7 +212,7 @@ class RouterOpenFlowDriver(RouterDriverBase):
                                                 new_status)
             port['status'] = new_status
             return port
-        except (nexc.OFCException, nexc.OFCConsistencyBroken) as exc:
+        except (nexc.OFCException, nexc.OFCMappingNotFound) as exc:
             with excutils.save_and_reraise_exception():
                 reason = _("delete_router_interface() failed due to %s") % exc
                 LOG.error(reason)
