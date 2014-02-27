@@ -136,11 +136,15 @@ class OFCClient(object):
             try:
                 return self.do_single_request(method, action, body)
             except nexc.OFCServiceUnavailable as e:
-                wait_time = e.retry_after
+                try:
+                    wait_time = int(e.retry_after)
+                except (ValueError, TypeError):
+                    wait_time = None
                 if i > 1 and wait_time:
                     LOG.info(_("Waiting for %s seconds due to "
                                "OFC Service_Unavailable."), wait_time)
                     time.sleep(wait_time)
+                    continue
                 raise
 
     def get(self, action):
