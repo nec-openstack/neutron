@@ -61,7 +61,7 @@ class OFCManager(object):
             self.create_ofc_tenant(context, tenant_id)
 
     def create_ofc_tenant(self, context, tenant_id):
-        desc = "ID=%s at OpenStack." % tenant_id
+        desc = context.tenant_name
         ofc_tenant_id = self.driver.create_tenant(desc, tenant_id)
         self._add_ofc_item(context, "ofc_tenant", tenant_id, ofc_tenant_id)
 
@@ -76,7 +76,7 @@ class OFCManager(object):
     def create_ofc_network(self, context, tenant_id, network_id,
                            network_name=None):
         ofc_tenant_id = self._get_ofc_id(context, "ofc_tenant", tenant_id)
-        desc = "ID=%s Name=%s at Neutron." % (network_id, network_name)
+        desc = network_name or ''
         ofc_net_id = self.driver.create_network(ofc_tenant_id, desc,
                                                 network_id)
         self._add_ofc_item(context, "ofc_network", network_id, ofc_net_id)
@@ -148,7 +148,7 @@ class OFCManager(object):
 
     def create_ofc_router(self, context, tenant_id, router_id, name=None):
         ofc_tenant_id = self._get_ofc_id(context, "ofc_tenant", tenant_id)
-        desc = "ID=%s Name=%s at Neutron." % (router_id, name)
+        desc = name or ''
         ofc_router_id = self.driver.create_router(ofc_tenant_id, router_id,
                                                   desc)
         self._add_ofc_item(context, "ofc_router", router_id, ofc_router_id)

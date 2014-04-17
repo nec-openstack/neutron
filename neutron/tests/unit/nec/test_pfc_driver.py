@@ -16,6 +16,7 @@
 # @author: Ryota MIBU
 
 import random
+import re
 import string
 import uuid
 
@@ -77,7 +78,7 @@ class PFCDriverTestBase(base.BaseTestCase):
 
     def get_ofc_description(self, desc):
         """OFC description consists of [A-Za-z0-9_]."""
-        return desc.replace('-', '_').replace(' ', '_')
+        return re.sub('[- =.]', '_', desc)
 
     def _create_tenant(self, t, ofc_t, post_id=False, post_desc=False):
         tenant_path = '/tenants/%s' % ofc_t
@@ -113,7 +114,9 @@ class PFCDriverTestBase(base.BaseTestCase):
     def testd_create_network(self):
         t, n, p = self.get_ofc_item_random_params()
         description = "desc of %s" % n
-        ofc_description = self.get_ofc_description(description)
+        ofc_description = self.get_ofc_description(
+            'ID=%(id)s Name=%(name)s at Neutron.' %
+            {'id': n, 'name': description})
 
         tenant_path = "/tenants/%s" % _ofc(t)
         post_path = "%s/networks" % tenant_path
@@ -678,6 +681,33 @@ class PFCFilterDriverTestMixin:
 class PFCV51DriverTest(PFCFilterDriverTestMixin, PFCV5DriverTest):
     driver = 'pfc_v51'
     filter_supported = True
+
+    def get_ofc_description(self, desc):
+        """OFC description consists of printable characters except ? and \"."""
+        return desc
+
+    def testa_create_tenant(self):
+        t, n, p = self.get_ofc_item_random_params()
+        ofc_t = self._generate_ofc_tenant_id(t)
+        self._create_tenant(t, ofc_t, post_id=True, post_desc=True)
+
+    def testd_create_network(self):
+        t, n, p = self.get_ofc_item_random_params()
+        description = "desc of %s" % n
+        ofc_description = self.get_ofc_description(
+            'ID=%(id)s Name=%(name)s at Neutron.' %
+            {'id': n, 'name': description})
+
+        tenant_path = "/tenants/%s" % _ofc(t)
+        post_path = "%s/networks" % tenant_path
+        body = {'description': ofc_description}
+        network = {'id': _ofc(n)}
+        self.do_request.return_value = network
+
+        ret = self.driver.create_network(tenant_path, description, n)
+        self.do_request.assert_called_once_with("POST", post_path, body=body)
+        net_path = "/tenants/%s/networks/%s" % (_ofc(t), _ofc(n))
+        self.assertEqual(ret, net_path)
 
     def test_create_port_with_filters_argument(self):
         self._test_create_port(
