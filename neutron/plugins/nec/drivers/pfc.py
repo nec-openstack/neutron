@@ -26,6 +26,7 @@ from neutron.common import constants
 from neutron.common import exceptions as qexc
 from neutron.common import log as call_log
 from neutron import manager
+from neutron.plugins.nec.common import config
 from neutron.plugins.nec.common import ofc_client
 from neutron.plugins.nec.extensions import packetfilter as ext_pf
 from neutron.plugins.nec import ofc_driver_base
@@ -172,6 +173,21 @@ class PFCFilterDriverMixin(object):
             elif not create:
                 body[key] = ""
 
+    def _extract_ofc_filter_port_id(self, ofc_port_id):
+        """Return ofc port id description for packet filter.
+
+        It returns either of the following format:
+        {'tenant': xxxx, 'network': xxxx, 'port': xxxx} or
+        {'tenant': xxxx, 'router': xxxx, 'interface': xxxx}
+        If no matching ofc id is found, InvalidOFCIdFormat is raised.
+        """
+        if config.OFC.support_packet_filter_on_ofc_router:
+            try:
+                return self._extract_ofc_router_inf_id(ofc_port_id)
+            except InvalidOFCIdFormat:
+                pass
+        return self._extract_ofc_port_id(ofc_port_id)
+
     def _generate_body(self, filter_dict, apply_ports=None, create=True):
         body = {}
 
@@ -218,7 +234,8 @@ class PFCFilterDriverMixin(object):
             body['apply_ports'] = []
             for p in apply_ports:
                 try:
-                    body['apply_ports'].append(self._extract_ofc_port_id(p[1]))
+                    _ofc_id = self._extract_ofc_filter_port_id(p[1])
+                    body['apply_ports'].append(_ofc_id)
                 except InvalidOFCIdFormat:
                     pass
 
@@ -296,6 +313,19 @@ class PFCRouterDriverMixin(object):
 
     router_supported = True
     router_nat_supported = False
+
+    match_ofc_router_inf_id = re.compile(
+        "^/tenants/(?P<tenant_id>[^/]+)/routers/(?P<router_id>[^/]+)"
+        "/interfaces/(?P<router_inf_id>[^/]+)$")
+
+    def _extract_ofc_router_inf_id(self, ofc_router_inf_id):
+        match = self.match_ofc_router_inf_id.match(ofc_router_inf_id)
+        if match:
+            return {'tenant': match.group('tenant_id'),
+                    'router': match.group('router_id'),
+                    'interface': match.group('router_inf_id')}
+        raise InvalidOFCIdFormat(resource='router-interface',
+                                 ofc_id=ofc_router_inf_id)
 
     def create_router(self, ofc_tenant_id, router_id, description):
         path = '%s/routers' % ofc_tenant_id

@@ -21,6 +21,7 @@ import uuid
 
 import mock
 import netaddr
+from oslo.config import cfg
 
 from neutron.common import constants
 from neutron.openstack.common import uuidutils
@@ -475,6 +476,29 @@ class PFCFilterDriverTestMixin:
         filter_post = {'apply_ports': [
             {'tenant': 'tenant-1', 'network': 'network-1', 'port': 'port-1'},
             {'tenant': 'tenant-2', 'network': 'network-2', 'port': 'port-2'}
+        ]}
+        self._test_create_filter(filter_dict={}, apply_ports=apply_ports,
+                                 filter_post=filter_post)
+
+    def test_create_filter_apply_ports_with_router_interface(self):
+        apply_ports = [
+            ('p1', '/tenants/tenant-1/networks/network-1/ports/port-1'),
+            ('p2', '/tenants/tenant-2/routers/router-3/interfaces/if-4')]
+        filter_post = {'apply_ports': [
+            {'tenant': 'tenant-1', 'network': 'network-1', 'port': 'port-1'},
+            {'tenant': 'tenant-2', 'router': 'router-3', 'interface': 'if-4'}
+        ]}
+        self._test_create_filter(filter_dict={}, apply_ports=apply_ports,
+                                 filter_post=filter_post)
+
+    def test_create_filter_apply_ports_no_router_interface_support(self):
+        cfg.CONF.set_override('support_packet_filter_on_ofc_router',
+                              False, 'OFC')
+        apply_ports = [
+            ('p1', '/tenants/tenant-1/networks/network-1/ports/port-1'),
+            ('p2', '/tenants/tenant-2/routers/router-3/interfaces/if-4')]
+        filter_post = {'apply_ports': [
+            {'tenant': 'tenant-1', 'network': 'network-1', 'port': 'port-1'},
         ]}
         self._test_create_filter(filter_dict={}, apply_ports=apply_ports,
                                  filter_post=filter_post)
