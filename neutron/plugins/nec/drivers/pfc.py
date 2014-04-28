@@ -28,6 +28,7 @@ from neutron.common import log as call_log
 from neutron import manager
 from neutron.plugins.nec.common import config
 from neutron.plugins.nec.common import ofc_client
+from neutron.plugins.nec.db import api as ndb
 from neutron.plugins.nec.extensions import packetfilter as ext_pf
 from neutron.plugins.nec import ofc_driver_base
 
@@ -297,8 +298,11 @@ class PFCFilterDriverMixin(object):
         self._validate_filter_common(filter_dict)
 
     @call_log.log
-    def create_filter(self, ofc_network_id, filter_dict,
-                      portinfo=None, filter_id=None, apply_ports=None):
+    def create_filter(self, context, filter_dict, filter_id=None):
+        in_port_id = filter_dict.get('in_port')
+        apply_ports = ndb.get_active_ports_on_ofc(
+            context, filter_dict['network_id'], in_port_id)
+
         body = self._generate_body(filter_dict, apply_ports, create=True)
         res = self.client.post(self.filters_path, body=body)
         # filter_id passed from a caller is not used.
@@ -321,11 +325,6 @@ class PFCFilterDriverMixin(object):
         if match:
             return match.group('filter_id')
         raise InvalidOFCIdFormat(resource='filter', ofc_id=ofc_filter_id)
-
-    def convert_ofc_filter_id(self, context, ofc_filter_id):
-        # PFC Packet Filter is supported after the format of mapping tables
-        # are changed, so it is enough just to return ofc_filter_id
-        return ofc_filter_id
 
 
 class PFCRouterDriverMixin(object):
